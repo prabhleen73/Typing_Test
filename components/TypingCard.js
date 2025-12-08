@@ -8,6 +8,7 @@ import { ConvexReactClient } from "convex/react";
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL);
 
+// UI COMPONENTS -----------------------------
 const Loader = styled.div`
   text-align: center;
   padding: 1.5rem;
@@ -99,8 +100,24 @@ const StartButton = styled.button`
   border: none;
 `;
 
+// COMPONENT --------------------------------
 export default function TypingCard({ studentId }) {
   const router = useRouter();
+
+  // Prevent going back during test
+useEffect(() => {
+  const handlePopState = () => {
+    window.history.forward();
+  };
+
+  window.history.pushState(null, null, window.location.href);
+  window.addEventListener("popstate", handlePopState);
+
+  return () => {
+    window.removeEventListener("popstate", handlePopState);
+  };
+}, []);
+
 
   const [text, setText] = useState("");
   const [countDown, setCountDown] = useState(null);
@@ -112,6 +129,7 @@ export default function TypingCard({ studentId }) {
   const [cursorIndex, setCursorIndex] = useState(0);
   const [isActive, setIsActive] = useState(false);
 
+  // REFS -----------------------------------
   const paragraphIdRef = useRef(null);
   const userInputRef = useRef("");
   const secRef = useRef(0);
@@ -119,20 +137,21 @@ export default function TypingCard({ studentId }) {
   const completionTimeRef = useRef(null);
   const intervalRef = useRef(null);
   const submittedRef = useRef(false);
-  const textareaRef = useRef(null);
 
   const paragraph = useQuery(api.paragraphs.getParagraph);
   const timeSetting = useQuery(api.timeSettings.getTimeSetting);
   const saveResult = useMutation(api.results.saveResult);
 
-  /* ------------------- Load testActive ------------------- */
+  // ---------------- Load test active flag
   useEffect(() => {
     setIsActive(sessionStorage.getItem("testActive") === "true");
   }, []);
 
-  /* ------------------- Submit Helpers ------------------- */
+  // ---------------- Save result helper -----------------
   const handleSaveResultToDB = useCallback(
     async ({ input, seconds }) => {
+      console.log("SAVE RESULT CALLED");
+
       const finalInput = input ?? userInputRef.current ?? "";
 
       let correctChars = 0;
@@ -140,9 +159,14 @@ export default function TypingCard({ studentId }) {
         if (finalInput[i] === text[i]) correctChars++;
       }
 
-      const secondsTaken = completionTimeRef.current ?? seconds ?? Math.max(1, secRef.current);
+      const secondsTaken =
+        completionTimeRef.current ?? seconds ?? Math.max(1, secRef.current);
+
       const totalTyped = finalInput.length + backspaceCountRef.current;
       const mistakes = backspaceCountRef.current;
+
+      console.log("correctChars =", correctChars);
+      console.log("secondsTaken =", secondsTaken);
 
       const accuracy =
         totalTyped === 0
@@ -150,6 +174,15 @@ export default function TypingCard({ studentId }) {
           : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
 
       const wpm = Math.round((correctChars * 60) / (5 * secondsTaken));
+
+      const resultObj = {
+        finalInput,
+        correctChars,
+        secondsTaken,
+        totalTyped,
+        mistakes,
+      };
+      console.log("FINAL RESULT:", resultObj);
 
       await saveResult({
         studentId: studentId ?? sessionStorage.getItem("studentId"),
@@ -164,9 +197,12 @@ export default function TypingCard({ studentId }) {
     [saveResult, studentId, text]
   );
 
+  // ---------------- Auto submit -----------------
   const doAutoSubmit = useCallback(async () => {
     if (submittedRef.current) return;
     submittedRef.current = true;
+
+    console.log("AUTO SUBMIT");
 
     clearInterval(intervalRef.current);
     setFinished(true);
@@ -185,37 +221,45 @@ export default function TypingCard({ studentId }) {
     router.replace("/test-submitted");
   }, [handleSaveResultToDB, router]);
 
-  /* ------------------- RESTORE LOGIC (FINAL FIXED) ------------------- */
+  // ---------------- Restore logic -----------------
   useEffect(() => {
     if (!paragraph || !paragraph._id || !timeSetting) return;
 
-    const pid = paragraph._id;
-    paragraphIdRef.current = pid;
-    setText(paragraph.content || "");
+    console.log("Paragraph loaded. ID:", paragraph._id);
+
+    // FIX: Trim leading BOM, tabs, spaces, newlines
+    const cleaned = (paragraph.content || "").replace(/^\s+|\uFEFF/g, "");
+    console.log("CLEANED PARAGRAPH:", cleaned.slice(0, 50));
+
+    paragraphIdRef.current = paragraph._id;
+    setText(cleaned);
 
     setTimeout(() => {
       const saved = sessionStorage.getItem("typingState");
+
       if (saved) {
         const s = JSON.parse(saved);
+        console.log("RESTORE FOUND:", s);
 
-        if (s.paragraphId === pid && paragraph.content?.length > 5) {
-          // Restore input
-          setUserInputState(s.text || "");
-          userInputRef.current = s.text || "";
+        if (s.paragraphId === paragraph._id && cleaned.length > 5) {
+          console.log("Restoring input:", s.text);
+          setUserInputState(s.text);
+          userInputRef.current = s.text;
 
-          // Restore timer
+          console.log("Restoring timer:", s.countDown, s.sec);
           setCountDown(s.countDown ?? timeSetting.duration);
           secRef.current = s.sec ?? 0;
 
-          // Restore states
+          console.log("Restore state:", s);
           setStarted(!!s.started);
           setFinished(!!s.finished);
-          backspaceCountRef.current = s.backspaces ?? 0;
-
           setCursorIndex(s.cursorIndex ?? 0);
           setErrorIndex(s.errorIndex ?? null);
+          backspaceCountRef.current = s.backspaces ?? 0;
 
           if (s.started && !s.finished) {
+            console.log("Restarting timer...");
+
             setTypingEnabled(true);
 
             clearInterval(intervalRef.current);
@@ -223,6 +267,8 @@ export default function TypingCard({ studentId }) {
               secRef.current++;
 
               setCountDown((prev) => {
+                console.log("Timer tick (restore):", { sec: secRef.current, countDown: prev });
+
                 if (prev <= 1) {
                   clearInterval(intervalRef.current);
                   doAutoSubmit();
@@ -237,14 +283,13 @@ export default function TypingCard({ studentId }) {
         }
       }
 
-      // Fresh state
       if (countDown === null) {
         setCountDown(timeSetting.duration ?? 60);
       }
     }, 30);
-  }, [paragraph, timeSetting]);  // <- FIX: doAutoSubmit removed
+  }, [paragraph, timeSetting, doAutoSubmit]);
 
-  /* ------------------- Save State ------------------- */
+  // ---------------- Save state to sessionStorage -----------------
   useEffect(() => {
     if (!paragraphIdRef.current) return;
 
@@ -261,12 +306,13 @@ export default function TypingCard({ studentId }) {
     };
 
     sessionStorage.setItem("typingState", JSON.stringify(data));
+    console.log("SAVING INPUT STATE:", data);
   }, [userInputState, countDown, started, finished, cursorIndex, errorIndex]);
 
-  /* ------------------- Cleanup ------------------- */
+  // ---------------- Cleanup -----------------
   useEffect(() => () => clearInterval(intervalRef.current), []);
 
-  /* ------------------- Start Timer ------------------- */
+  // ---------------- Start timer -----------------
   const startTimer = useCallback(() => {
     if (started) return;
 
@@ -285,6 +331,8 @@ export default function TypingCard({ studentId }) {
       secRef.current++;
 
       setCountDown((prev) => {
+        console.log("Timer tick:", { sec: secRef.current, countDown: prev });
+
         if (prev <= 1) {
           clearInterval(intervalRef.current);
           doAutoSubmit();
@@ -295,18 +343,16 @@ export default function TypingCard({ studentId }) {
     }, 1000);
   }, [started, timeSetting, doAutoSubmit]);
 
-  /* ------------------- User Input ------------------- */
+  // ---------------- User input -----------------
   const onUserInputChange = (e) => {
     if (!isActive || finished) return;
     if (!typingEnabled) return;
 
     const value = e.target.value;
-
     setCursorIndex(value.length);
 
     if (value.length > text.length) return;
 
-    // Error handling
     if (errorIndex !== null) {
       if (value.length < userInputRef.current.length) {
         backspaceCountRef.current++;
@@ -328,18 +374,16 @@ export default function TypingCard({ studentId }) {
       return;
     }
 
-    // Normal typing
     userInputRef.current = value;
     setUserInputState(value);
     setErrorIndex(null);
 
-    // Completion timestamp
     if (value.length === text.length && !completionTimeRef.current) {
       completionTimeRef.current = secRef.current;
     }
   };
 
-  /* ------------------- Render ------------------- */
+  // ---------------- Render -----------------
   if (!studentId && !sessionStorage.getItem("studentId"))
     return <Loader>Loading...</Loader>;
 
@@ -366,12 +410,11 @@ export default function TypingCard({ studentId }) {
           />
 
           <TextArea
-            ref={textareaRef}
             value={userInputState}
             onChange={onUserInputChange}
             readOnly={!typingEnabled || finished || !isActive}
             placeholder={"Typing Test Running..."}
-            onPaste={(e) => e.preventDefault()}  
+            onPaste={(e) => e.preventDefault()}
             onCopy={(e) => e.preventDefault()}
             onCut={(e) => e.preventDefault()}
           />
