@@ -186,6 +186,7 @@ useEffect(() => {
 
       await saveResult({
         studentId: studentId ?? sessionStorage.getItem("studentId"),
+        sessionId: sessionStorage.getItem("sessionId"),
         paragraphId: paragraphIdRef.current,
         symbols: correctChars,
         seconds: secondsTaken,

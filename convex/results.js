@@ -1,9 +1,7 @@
-// convex/results.js
-
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-// Check if student already attempted
+// ✅ Check if student already attempted
 export const hasAttempted = query({
   args: {
     studentId: v.string(),
@@ -21,10 +19,11 @@ export const hasAttempted = query({
   },
 });
 
-// Save result
+// ✅ Save Result (BULLETPROOF)
 export const saveResult = mutation({
   args: {
     studentId: v.string(),
+    sessionId: v.string(), // ✅ STRING to match frontend
     paragraphId: v.id("paragraphs"),
     symbols: v.number(),
     seconds: v.number(),
@@ -34,37 +33,32 @@ export const saveResult = mutation({
   },
 
   handler: async (ctx, args) => {
-    const { studentId, paragraphId } = args;
-
-    // ✅ FIX 1 — reject invalid payload (prevents crashes)
-    if (!studentId || !paragraphId) {
-      return { success: false, message: "Invalid result payload." };
+    if (!args.studentId || !args.paragraphId || !args.sessionId) {
+      return { success: false, message: "Missing required fields" };
     }
 
-    // Block repeated attempts
     const existing = await ctx.db
       .query("results")
-      .withIndex("by_student", (q) => q.eq("studentId", studentId))
-      .filter((q) => q.eq(q.field("paragraphId"), paragraphId))
+      .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
+      .filter((q) => q.eq(q.field("paragraphId"), args.paragraphId))
       .first();
 
     if (existing) {
-      return { success: false, message: "Attempt blocked: Already attempted." };
+      return { success: false, message: "Already attempted" };
     }
 
-    const paragraph = await ctx.db.get(paragraphId);
-
-    // ✅ FIX 2 — paragraph not found safety
+    const paragraph = await ctx.db.get(args.paragraphId);
     if (!paragraph) {
-      return { success: false, message: "Paragraph not found." };
+      return { success: false, message: "Paragraph not found" };
     }
 
     const paragraphContent = paragraph.content ?? "";
     const originalSymbols = paragraphContent.length;
 
-    const result = await ctx.db.insert("results", {
-      studentId,
-      paragraphId,
+    await ctx.db.insert("results", {
+      studentId: args.studentId,
+      sessionId: args.sessionId, // ✅ GUARANTEED SAFE
+      paragraphId: args.paragraphId,
       symbols: args.symbols,
       seconds: args.seconds,
       accuracy: args.accuracy,
@@ -75,17 +69,28 @@ export const saveResult = mutation({
       submittedAt: new Date().toISOString(),
     });
 
-    return { success: true, result };
+    return { success: true };
   },
 });
 
-// Get all results - admin
+// ✅ Get all results - admin
 export const getAllResults = query({
   handler: async (ctx) => {
     return await ctx.db
       .query("results")
       .withIndex("by_submittedAt")
       .order("desc")
+      .collect();
+  },
+});
+
+// ✅ Get results by session
+export const getResultsBySession = query({
+  args: { sessionId: v.string() },
+  handler: async (ctx, { sessionId }) => {
+    return await ctx.db
+      .query("results")
+      .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
       .collect();
   },
 });

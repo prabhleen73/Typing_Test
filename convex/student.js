@@ -19,15 +19,16 @@ export const createStudent = mutation({
   args: {
     name: v.string(),
     applicationNumber: v.string(),
-    dob: v.string(), // "DD-MM-YYYY"
+    dob: v.string(),
+    sessionId: v.id("testSessions"),
+    sessionName: v.string(),
   },
 
-  handler: async (ctx, { name, applicationNumber, dob }) => {
-    if (!name || !applicationNumber || !dob) {
+  handler: async (ctx, { name, applicationNumber, dob, sessionId,sessionName }) => {
+    if (!name || !applicationNumber || !dob || !sessionId || !sessionName) {
       return { success: false, message: "Missing required fields" };
     }
 
-    // first 4 letters + DDMMYYYY
     const firstName = name.trim().split(/\s+/)[0].toLowerCase();
     const firstFour = firstName.slice(0, 4);
 
@@ -49,31 +50,26 @@ export const createStudent = mutation({
         name,
         dob,
         passwordHash,
+        sessionId,
+        sessionName,
       });
 
-      return {
-        success: true,
-        updated: true,
-        applicationNumber,
-        generatedPassword,
-      };
+      return { success: true, updated: true };
     }
 
-    const inserted = await ctx.db.insert("students", {
+    await ctx.db.insert("students", {
       name,
       applicationNumber,
       dob,
       passwordHash,
+      sessionId,
+      sessionName,
     });
 
-    return {
-      success: true,
-      insertedId: inserted._id,
-      applicationNumber,
-      generatedPassword,
-    };
+    return { success: true, inserted: true };
   },
 });
+
 
 /* ------------------------------------------
    VERIFY STUDENT → CREATE SESSION
@@ -150,5 +146,19 @@ export const checkExists = query({
       .first();
 
     return !!student;
+  },
+});
+
+export const getStudentSession = query({
+  args: { studentId: v.string() },
+  handler: async (ctx, { studentId }) => {
+    const student = await ctx.db
+      .query("students")
+      .withIndex("by_applicationNumber", (q) =>
+        q.eq("applicationNumber", studentId)
+      )
+      .first();
+
+    return student?.sessionId ?? null;
   },
 });

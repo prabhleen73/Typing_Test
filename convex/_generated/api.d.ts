@@ -12,6 +12,7 @@ import type * as paragraphs from "../paragraphs.js";
 import type * as results from "../results.js";
 import type * as sessions from "../sessions.js";
 import type * as student from "../student.js";
+import type * as testSessions from "../testSessions.js";
 import type * as timeSettings from "../timeSettings.js";
 
 import type {
@@ -25,6 +26,7 @@ declare const fullApi: ApiFromModules<{
   results: typeof results;
   sessions: typeof sessions;
   student: typeof student;
+  testSessions: typeof testSessions;
   timeSettings: typeof timeSettings;
 }>;
 

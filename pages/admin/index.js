@@ -23,28 +23,34 @@ export default function AdminDashboard() {
     <PageWrapper>
       <Card>
         <Title>Admin Dashboard</Title>
-        <Subtitle>Manage typing tests, paragraphs, results, and students</Subtitle>
+        <Subtitle>Manage typing tests, sessions, results, and students</Subtitle>
 
         <Menu>
-
           <MenuItem href="/upload-text">
             <span>📤</span> Upload Paragraph File
+          </MenuItem>
+
+          {/* ⭐ NEW MENU ITEM — Manage Sessions */}
+          <MenuItem href="/admin/sessions">
+            <span>🗂️</span> Manage Sessions
           </MenuItem>
 
           <MenuItem href="/admin/results">
             <span>📊</span> View Test Results
           </MenuItem>
- 
-          <MenuItem href="/admin/import-students">
-            <span>📥</span> Import Students 
-          </MenuItem>
 
+          <MenuItem href="/admin/import-students">
+            <span>📥</span> Import Students
+          </MenuItem>
         </Menu>
       </Card>
     </PageWrapper>
   );
 }
 
+/* -----------------------------
+     STYLED COMPONENTS
+------------------------------ */
 
 const PageWrapper = styled.div`
   min-height: 100vh;
