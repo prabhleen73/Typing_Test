@@ -1,16 +1,15 @@
-// pages/test-submitted.js
 import { useEffect } from "react";
 import styled from "styled-components";
 import { useRouter } from "next/router";
 
-export default function TestSubmitted() {
+export default function AlreadyAttempted() {
   const router = useRouter();
 
   useEffect(() => {
-    // Show this page briefly, then go to login
+    // Show message for 1.8 seconds → then redirect to login
     const t = setTimeout(() => {
       router.replace("/login");
-    }, 1500);
+    }, 1800);
 
     return () => clearTimeout(t);
   }, [router]);
@@ -18,8 +17,8 @@ export default function TestSubmitted() {
   return (
     <Wrapper>
       <Card>
-        <Title>Test submitted successfully ✅</Title>
-        <Sub>Your result has been recorded.</Sub>
+        <Title>You Have Already Attempted the Test</Title>
+        <Subtitle>Your response has been recorded.</Subtitle>
       </Card>
     </Wrapper>
   );
@@ -28,27 +27,31 @@ export default function TestSubmitted() {
 /* ---------------- STYLES ---------------- */
 
 const Wrapper = styled.div`
-  min-height: 100vh;
+  height: 100vh;
   display:flex;
-  align-items:center;
   justify-content:center;
-  background:#fff;
+  align-items:center;
+  background:#f4f7ff;
 `;
 
 const Card = styled.div`
-  background:#f8fbff;
-  padding:2rem;
+  background:#ffffff;
+  padding:2rem 2.5rem;
   border-radius:12px;
-  box-shadow:0 6px 18px rgba(0,0,0,0.08);
+  box-shadow:0 6px 18px rgba(0,0,0,0.1);
   text-align:center;
+  width:90%;
+  max-width:450px;
 `;
 
 const Title = styled.h1`
-  margin:0 0 .5rem 0;
-  font-size:1.6rem;
+  font-size:1.5rem;
+  font-weight:700;
+  margin-bottom:0.5rem;
 `;
 
-const Sub = styled.p`
-  margin:0;
+const Subtitle = styled.p`
+  font-size:1rem;
   color:#555;
+  margin:0;
 `;

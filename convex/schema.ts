@@ -2,41 +2,45 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  
-  // students table
+
+  // Students table
   students: defineTable({
     name: v.string(),
-    rollNumber: v.string(),
+    applicationNumber: v.string(),
+    dob: v.string(),
+    passwordHash: v.string(),
   })
-    .index("by_rollNumber", ["rollNumber"])
+    .index("by_applicationNumber", ["applicationNumber"])
     .index("by_name", ["name"]),
 
-  //paragraph-typing content
+  // Secure backend sessions
+  sessions: defineTable({
+    studentId: v.string(),     // applicationNumber
+    token: v.string(),         // session token
+    expiresAt: v.number(),     // timestamp ms
+    testActive: v.boolean()
+  })
+    .index("by_token", ["token"])
+    .index("by_studentId", ["studentId"]),
+
+  // Paragraphs table
   paragraphs: defineTable({
-    content: v.string(),                 // typing passage
-    difficulty: v.optional(v.string()),  // easy | medium | hard 
+    content: v.string(),
   }),
 
-  //timeSettings
-  timeSettings: defineTable({
-    duration: v.number(),                // e.g. 60 seconds
-    label: v.optional(v.string()),       
-  }),
-
- //Results Table
+  // Results table
   results: defineTable({
-    studentId: v.id("students"),         // FK → students table
-    paragraphId: v.id("paragraphs"),     // FK → paragraphs table
-
-    symbols: v.number(),                 // typed characters
-    seconds: v.number(),                 // time used
-    wpm: v.number(),                     // words per minute
-    accuracy: v.number(),                // accuracy %
-
-    text: v.optional(v.string()),        // full typed text (optional)
-
-    createdAt: v.string(),               // ISO timestamp
+    studentId: v.string(),
+    paragraphId: v.id("paragraphs"),
+    symbols: v.number(),
+    seconds: v.number(),
+    accuracy: v.number(),
+    wpm: v.number(),
+    text: v.string(),
+    paragraphContent: v.string(),
+    originalSymbols: v.number(),
+    submittedAt: v.string(),
   })
     .index("by_student", ["studentId"])
-    .index("by_paragraph", ["paragraphId"]),
+    .index("by_submittedAt", ["submittedAt"]),
 });

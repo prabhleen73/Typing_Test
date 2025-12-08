@@ -1,6 +1,6 @@
 
 // Allowed characters: letters, numbers, punctuation, spaces, newlines
-const VALID_CHAR_REGEX = /^[a-zA-Z0-9\s.,!?'"()\-:;]+$/;
+const VALID_CHAR_REGEX = /^[\x20-\x7E]+$/;
 
 // Validate a whole paragraph
 export function validateParagraph(paragraph) {

@@ -1,8 +1,8 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-   //Character validation
-const VALID_CHAR_REGEX = /^[a-zA-Z0-9\s.,!?'"()\-:;]+$/;
+//Character validation
+const VALID_CHAR_REGEX = /^[\x20-\x7E]+$/;
 
 // Validate text before saving
 function validateParagraphText(text) {
@@ -56,14 +56,6 @@ export const setParagraph = mutation({
    // return the one saved
  
 export const getParagraph = query({
-  handler: async (ctx) => {
-    return await ctx.db.query("paragraphs").first();
-  },
-});
-
-   //get random paragraph (typing test compatibility)
-
-export const getRandomParagraph = query({
   handler: async (ctx) => {
     return await ctx.db.query("paragraphs").first();
   },

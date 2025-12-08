@@ -29,7 +29,7 @@ export default function UploadText() {
       const result = validateParagraph(text);
 
       if (!result.valid) {
-        setError("❌ Invalid characters found: " + result.invalidChars.join(" "));
+        setError("Invalid characters found: " + result.invalidChars.join(" "));
         setFileText("");
         // IMPORTANT: allow selecting the same file again
         e.target.value = null;

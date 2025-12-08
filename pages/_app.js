@@ -13,7 +13,7 @@ const GlobalStyle = createGlobalStyle`
     overflow-x: hidden;  
     overflow-y: auto;    
 
-    background: linear-gradient(135deg, #fdfbfb, #ebedee);
+    background: #ffffff
     font-family: 'Poppins', sans-serif;
     height: 100%;
     width: 100%;

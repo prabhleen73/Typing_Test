@@ -1,34 +1,154 @@
-// convex/student.js
-import { mutation } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
+import { api } from "./_generated/api";
 
-/**
- * verifyStudent mutation
- * Input: { name, rollNumber }
- * Output: { success: boolean, studentId?: string, message?: string }
- *
- * Adjust DB logic to match your schema (students collection/table).
- */
-export const verifyStudent = mutation(async ({ db }, { name, rollNumber }) => {
-  if (!name || !rollNumber) {
-    return { success: false, message: "Missing name or roll number" };
-  }
+// hash string using WebCrypto SHA-256
+async function hashString(str) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join(""); // hex string
+}
 
-  // Example: look up student by rollNumber (adjust field name to your schema)
-  const results = await db
-    .query("students")
-    .filter((q) => q.eq(q.field("rollNumber"), rollNumber))
-    .collect();
+/* ------------------------------------------
+   CREATE STUDENT (Admin Import CSV)
+---------------------------------------------*/
+export const createStudent = mutation({
+  args: {
+    name: v.string(),
+    applicationNumber: v.string(),
+    dob: v.string(), // "DD-MM-YYYY"
+  },
 
-  const student = results && results.length ? results[0] : null;
+  handler: async (ctx, { name, applicationNumber, dob }) => {
+    if (!name || !applicationNumber || !dob) {
+      return { success: false, message: "Missing required fields" };
+    }
 
-  if (!student) {
-    return { success: false, message: "Student not found" };
-  }
+    // first 4 letters + DDMMYYYY
+    const firstName = name.trim().split(/\s+/)[0].toLowerCase();
+    const firstFour = firstName.slice(0, 4);
 
-  // Optionally verify name matches
-  if (student.name && student.name.toLowerCase() !== name.toLowerCase()) {
-    return { success: false, message: "Name does not match record" };
-  }
+    const [dd, mm, yyyy] = dob.split("-");
+    const ddmmyyyy = `${dd}${mm}${yyyy}`;
 
-  return { success: true, studentId: student._id };
+    const generatedPassword = `${firstFour}${ddmmyyyy}`;
+    const passwordHash = await hashString(generatedPassword);
+
+    const existing = await ctx.db
+      .query("students")
+      .withIndex("by_applicationNumber", (q) =>
+        q.eq("applicationNumber", applicationNumber)
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        name,
+        dob,
+        passwordHash,
+      });
+
+      return {
+        success: true,
+        updated: true,
+        applicationNumber,
+        generatedPassword,
+      };
+    }
+
+    const inserted = await ctx.db.insert("students", {
+      name,
+      applicationNumber,
+      dob,
+      passwordHash,
+    });
+
+    return {
+      success: true,
+      insertedId: inserted._id,
+      applicationNumber,
+      generatedPassword,
+    };
+  },
+});
+
+/* ------------------------------------------
+   VERIFY STUDENT → CREATE SESSION
+---------------------------------------------*/
+export const verifyStudent = mutation({
+  args: {
+    username: v.optional(v.string()),
+    password: v.optional(v.string()),
+    name: v.optional(v.string()), // legacy alias
+  },
+
+  handler: async (ctx, args) => {
+    const username = args.username ?? args.name;
+    const password = args.password;
+
+    if (!username || !password) {
+      return { success: false, message: "Missing username or password" };
+    }
+
+    const student = await ctx.db
+      .query("students")
+      .withIndex("by_applicationNumber", (q) =>
+        q.eq("applicationNumber", username)
+      )
+      .first();
+
+    if (!student) {
+      return { success: false, message: "Invalid credentials" };
+    }
+
+    const incomingHash = await hashString(password);
+
+    if (incomingHash !== student.passwordHash) {
+      return { success: false, message: "Invalid credentials" };
+    }
+
+    // ⭐ CREATE SESSION (1 hour expiry)
+    const expiresInMs = 60 * 60 * 1000;
+
+    const session = await ctx.runMutation(api.sessions.createSession, {
+      studentId: student.applicationNumber,
+      expiresInMs,
+    });
+
+    // defensive: ensure session created
+    if (!session || !session.token) {
+      return {
+        success: false,
+        message: "Failed to create session. Please try again.",
+      };
+    }
+
+    return {
+      success: true,
+      studentId: student.applicationNumber,
+      token: session.token,   // <-- returns `token`
+      expiresAt: session.expiresAt,
+    };
+  },
+});
+
+/* ------------------------------------------
+   CHECK STUDENT EXISTS (used by /test)
+---------------------------------------------*/
+export const checkExists = query({
+  args: { studentId: v.string() },
+
+  handler: async (ctx, { studentId }) => {
+    const student = await ctx.db
+      .query("students")
+      .withIndex("by_applicationNumber", (q) =>
+        q.eq("applicationNumber", studentId)
+      )
+      .first();
+
+    return !!student;
+  },
 });

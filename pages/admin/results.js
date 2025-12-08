@@ -1,14 +1,36 @@
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import styled from "styled-components";
+import { useState } from "react";
 
 export default function Results() {
   const results = useQuery(api.results.getAllResults);
+  const [modalText, setModalText] = useState("");
+  const [showModal, setShowModal] = useState(false);
+
+  const openModal = (text) => {
+    setModalText(text);
+    setShowModal(true);
+  };
 
   return (
     <Container>
       <Title>All Results</Title>
 
+      {/* Modal */}
+      {showModal && (
+        <ModalOverlay onClick={() => setShowModal(false)}>
+          <ModalBox onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Original Paragraph</ModalTitle>
+
+            <ModalContent>{modalText}</ModalContent>
+
+            <CloseButton onClick={() => setShowModal(false)}>Close</CloseButton>
+          </ModalBox>
+        </ModalOverlay>
+      )}
+
+      {/* Table */}
       {!results ? (
         <Loading>Loading results...</Loading>
       ) : results.length === 0 ? (
@@ -22,20 +44,34 @@ export default function Results() {
                 <th>Paragraph</th>
                 <th>WPM</th>
                 <th>Accuracy</th>
-                <th>Symbols</th>
-                <th>Time (sec)</th>
+                <th>Original Symbols</th>
+                <th>Correct Symbols</th>
+                <th>Time Taken</th>
+                <th>Submitted At</th>
                 <th>Typed Text</th>
               </tr>
             </thead>
+
             <tbody>
               {results.map((r) => (
                 <tr key={r._id}>
                   <td>{r.studentId}</td>
-                  <td>{r.paragraphId}</td>
+
+                  <td>
+                    <ParagraphButton onClick={() => openModal(r.paragraphContent)}>
+                      View Paragraph
+                    </ParagraphButton>
+                  </td>
+
                   <td>{r.wpm}</td>
                   <td>{r.accuracy}%</td>
+                  <td>{r.originalSymbols}</td>
                   <td>{r.symbols}</td>
-                  <td>{r.seconds}</td>
+
+                  <td>{r.seconds} sec</td>
+
+                  <td>{new Date(r.submittedAt).toLocaleString()}</td>
+
                   <td className="textCell">{r.text}</td>
                 </tr>
               ))}
@@ -47,6 +83,63 @@ export default function Results() {
   );
 }
 
+
+const ParagraphButton = styled.button`
+  background: none;
+  border: none;
+  color: #3b5bff;
+  cursor: pointer;
+  text-decoration: underline;
+
+  &:hover {
+    color: #1a33cc;
+  }
+`;
+
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+`;
+
+const ModalBox = styled.div`
+  background: white;
+  padding: 20px;
+  width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  border-radius: 10px;
+`;
+
+const ModalTitle = styled.h3`
+  margin-top: 0;
+`;
+
+const ModalContent = styled.p`
+  white-space: pre-wrap;
+  font-size: 15px;
+  line-height: 1.5;
+`;
+
+const CloseButton = styled.button`
+  margin-top: 15px;
+  padding: 10px 20px;
+  background: #3b5bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover {
+    background: #1a33cc;
+  }
+`;
 
 const Container = styled.div`
   padding: 40px;

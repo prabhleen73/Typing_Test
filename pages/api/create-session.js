@@ -8,21 +8,18 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false });
   }
 
-  const { username, password } = req.body;
-
-  if (!username || !password) {
-    return res.status(400).json({ success: false, message: "Missing username or password" });
-  }
+  const { studentId, expiresInMs } = req.body;
 
   try {
-    // modern login shape
-    const result = await convex.mutation(api.student.verifyStudent, {
-      username,
-      password,
+    const session = await convex.mutation(api.sessions.createSession, {
+      studentId,
+      expiresInMs,
     });
 
-    res.status(200).json(result);
+    res.status(200).json(session);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+
+  
 }

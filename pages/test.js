@@ -1,67 +1,292 @@
-import { useState } from "react";
+// pages/test.js — Patched TestPage
+import { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
+import { useRouter } from "next/router";
+import { ConvexReactClient } from "convex/react";
+import { api } from "../convex/_generated/api";
+
 import NavHeader from "../components/NavHeader";
 import TypingCard from "../components/TypingCard";
 
-export default function TestPage() {
-  const [currentSpeed, setCurrentSpeed] = useState(0);
+const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL);
 
-  const homepageCallback = (speed) => {
-    setCurrentSpeed(speed);
+export default function TestPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [currentSpeed, setCurrentSpeed] = useState(0);
+  const [studentId, setStudentId] = useState(null);
+
+  const validatedRef = useRef(false);
+  const testStartedRef = useRef(false);
+
+  const [fsReady, setFsReady] = useState(false);
+  const [showFsWarning, setShowFsWarning] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onPop = () => {
+      if (testStartedRef.current) window.history.forward();
+    };
+
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
+    if (validatedRef.current) return;
+    validatedRef.current = true;
+
+    let mounted = true;
+
+    async function validate() {
+      if (testStartedRef.current) return;
+
+      const storedSid = sessionStorage.getItem("studentId");
+      const storedActive = sessionStorage.getItem("testActive") === "true";
+
+      if (storedSid) setStudentId(storedSid);
+
+      if (storedActive) {
+        testStartedRef.current = true;
+        if (mounted) setLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/get-session", { credentials: "include" });
+      const { token } = await res.json();
+
+      if (!token) return router.replace("/login");
+
+      let session;
+      try {
+        session = await convex.query(api.sessions.validateSession, { token });
+      } catch {
+        return router.replace("/login");
+      }
+
+      if (!session?.valid) {
+        await fetch("/api/logout", { method: "POST" });
+        return router.replace("/login");
+      }
+
+      const sid = session.studentId;
+      if (mounted) setStudentId(sid);
+
+      const exists = await convex.query(api.student.checkExists, {
+        studentId: sid,
+      });
+      if (!exists) return router.replace("/login");
+
+      const paragraph = await convex.query(api.paragraphs.getParagraph);
+      if (!paragraph?._id) {
+        alert("No test available.");
+        return;
+      }
+
+      const attempted = await convex.query(api.results.hasAttempted, {
+        studentId: sid,
+        paragraphId: paragraph._id,
+      });
+
+      if (attempted) {
+        await fetch("/api/logout", { method: "POST" });
+        router.replace("/already-attempted");
+        return;
+      }
+
+      if (session.testActive) {
+        sessionStorage.setItem("studentId", sid);
+        sessionStorage.setItem("testActive", "true");
+        testStartedRef.current = true;
+        setLoading(false);
+        return;
+      }
+
+      if (mounted) {
+        testStartedRef.current = true;
+
+        try {
+          await convex.mutation(api.sessions.updateTestActive, {
+            token,
+            active: true,
+          });
+        } catch {}
+
+        sessionStorage.setItem("studentId", sid);
+        sessionStorage.setItem("testActive", "true");
+
+        setLoading(false);
+      }
+    }
+
+    validate();
+    return () => (mounted = false);
+  }, [router]);
+
+  useEffect(() => {
+    if (!fsReady) return;
+
+    const onFsChange = () => {
+      const isFs =
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement;
+
+      if (!isFs) setShowFsWarning(true);
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+
+    const blockKeys = (e) => {
+      const key = e.key?.toLowerCase?.() || "";
+
+      if (key === "escape") return e.preventDefault();
+      if (/^f\d{1,2}$/.test(key)) return e.preventDefault();
+      if (e.altKey) return e.preventDefault();
+      if (e.metaKey) return e.preventDefault();
+      if (
+        (e.ctrlKey && key === "r") ||
+        (e.ctrlKey && key === "w") ||
+        (e.ctrlKey && key === "p") ||
+        (e.ctrlKey && key === "s") ||
+        (e.ctrlKey && e.shiftKey && key === "i")
+      ) return e.preventDefault();
+    };
+
+    window.addEventListener("keydown", blockKeys);
+    window.oncontextmenu = (e) => e.preventDefault();
+
+    const onVisibility = () => {
+      if (document.hidden) alert("⚠️ You minimized or switched tabs.");
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("keydown", blockKeys);
+      window.oncontextmenu = null;
+    };
+  }, [fsReady]);
+
+  useEffect(() => {
+  if (!showFsWarning) return;
+
+  // Always keep user locked on the same page
+  const enforceStay = () => {
+    // Force browser to move forward immediately
+    setTimeout(() => {
+      window.history.forward();
+    }, 0);
   };
+
+  // Prime the history with a dummy state
+  window.history.pushState(null, "", window.location.href);
+  window.history.pushState(null, "", window.location.href);
+
+  // Catch "Back" events
+  window.addEventListener("popstate", enforceStay);
+
+  // Block ALT+Left / Right
+  const blockAltNav = (e) => {
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+    }
+  };
+  window.addEventListener("keydown", blockAltNav);
+
+  // Block refresh/close
+  const beforeUnload = (e) => {
+    e.preventDefault();
+    e.returnValue = "";
+  };
+  window.addEventListener("beforeunload", beforeUnload);
+
+  return () => {
+    window.removeEventListener("popstate", enforceStay);
+    window.removeEventListener("keydown", blockAltNav);
+    window.removeEventListener("beforeunload", beforeUnload);
+  };
+}, [showFsWarning]);
+
+
+  async function startFullscreen() {
+    try {
+      await document.documentElement.requestFullscreen();
+    } catch {}
+    setFsReady(true);
+  }
+
+  async function resumeFullscreen() {
+    try {
+      await document.documentElement.requestFullscreen();
+    } catch {}
+    setShowFsWarning(false);
+  }
+
+  if (loading) return <div>Validating session…</div>;
 
   return (
     <PageWrapper>
       <NavHeader currentSpeed={currentSpeed} />
 
       <MainContent>
-        <Heading>Typing Test Portal</Heading>
-        <TypingCard homepageCallback={homepageCallback} />
+        <TypingCard homepageCallback={setCurrentSpeed} studentId={studentId} />
       </MainContent>
+
+      {!fsReady && (
+        <Overlay>
+          <h1>Start Your Typing Test</h1>
+          <p>The test runs in fullscreen mode.</p>
+          <OverlayBtn onClick={startFullscreen}>Start Test</OverlayBtn>
+        </Overlay>
+      )}
+
+      {showFsWarning && (
+        <Overlay>
+          <h1>You left fullscreen</h1>
+          <p>Please return to fullscreen.</p>
+          <OverlayBtn onClick={resumeFullscreen}>Resume</OverlayBtn>
+        </Overlay>
+      )}
     </PageWrapper>
   );
 }
 
-const PageWrapper = styled.div`
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  min-height: 100vh;
+const Overlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100vw;
-  background: linear-gradient(135deg, #1e1e2f, #2b2b40);
-  font-family: "Inter", sans-serif;
-  color: #fff;
-  overflow-x: hidden;
-  overflow-y: auto;
-`;
-
-const MainContent = styled.div`
+  height: 100vh;
+  background: rgba(255,255,255,0.95);
+  z-index: 9999;
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 95%;
-  max-width: 1200px;
-  margin-top: 2rem;
-  gap: 1.5rem;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 1rem;
-  padding: 2rem;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
-`;
-
-const Heading = styled.h1`
-  font-size: 1.8rem;
-  font-weight: 700;
-  background: linear-gradient(90deg, #ff6b6b, #feca57, #54a0ff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin: 0;
+  justify-content: center;
   text-align: center;
 `;
 
-const Footer = styled.footer`
-  margin-top: 2rem;
-  font-size: 0.85rem;
-  color: #aaa;
+const OverlayBtn = styled.button`
+  padding: 14px 26px;
+  font-size: 18px;
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: 20px;
+`;
+
+const PageWrapper = styled.div`
+  width: 100%;
+  min-height: 100vh;
+  background: #fafafa;
+`;
+
+const MainContent = styled.div`
+  max-width: 900px;
+  margin: auto;
+  padding: 20px;
 `;

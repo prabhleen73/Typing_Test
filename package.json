@@ -11,12 +11,13 @@
   "dependencies": {
     "axios": "^1.13.2",
     "next": "^14.2.5",
+    "papaparse": "^5.5.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "styled-components": "^5.3.1"
   },
   "devDependencies": {
-    "convex": "^1.29.1",
+    "convex": "^1.30.0",
     "cross-env": "7.0.3",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.5"

@@ -9,7 +9,6 @@ export default function AdminDashboard() {
     window.history.pushState(null, "", window.location.href);
 
     const handlePopState = () => {
-      // Force stay on this page whenever forward is clicked
       window.history.pushState(null, "", window.location.href);
     };
 
@@ -24,15 +23,20 @@ export default function AdminDashboard() {
     <PageWrapper>
       <Card>
         <Title>Admin Dashboard</Title>
-        <Subtitle>Manage typing tests, paragraphs, and results</Subtitle>
+        <Subtitle>Manage typing tests, paragraphs, results, and students</Subtitle>
 
         <Menu>
+
           <MenuItem href="/upload-text">
             <span>📤</span> Upload Paragraph File
           </MenuItem>
 
           <MenuItem href="/admin/results">
             <span>📊</span> View Test Results
+          </MenuItem>
+ 
+          <MenuItem href="/admin/import-students">
+            <span>📥</span> Import Students 
           </MenuItem>
 
         </Menu>
