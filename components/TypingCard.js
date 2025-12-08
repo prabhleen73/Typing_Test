@@ -4,9 +4,6 @@ import Preview from "./Preview";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useRouter } from "next/router";
-import { ConvexReactClient } from "convex/react";
-
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL);
 
 // UI COMPONENTS -----------------------------
 const Loader = styled.div`
@@ -104,20 +101,21 @@ const StartButton = styled.button`
 export default function TypingCard({ studentId }) {
   const router = useRouter();
 
-  // Prevent going back during test
-useEffect(() => {
-  const handlePopState = () => {
-    window.history.forward();
-  };
+  // Prevent going back during test (runs only in browser)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-  window.history.pushState(null, null, window.location.href);
-  window.addEventListener("popstate", handlePopState);
+    const handlePopState = () => {
+      window.history.forward();
+    };
 
-  return () => {
-    window.removeEventListener("popstate", handlePopState);
-  };
-}, []);
+    window.history.pushState(null, null, window.location.href);
+    window.addEventListener("popstate", handlePopState);
 
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
 
   const [text, setText] = useState("");
   const [countDown, setCountDown] = useState(null);
@@ -128,6 +126,7 @@ useEffect(() => {
   const [userInputState, setUserInputState] = useState("");
   const [cursorIndex, setCursorIndex] = useState(0);
   const [isActive, setIsActive] = useState(false);
+  const [storedStudentId, setStoredStudentId] = useState(null);
 
   // REFS -----------------------------------
   const paragraphIdRef = useRef(null);
@@ -142,9 +141,13 @@ useEffect(() => {
   const timeSetting = useQuery(api.timeSettings.getTimeSetting);
   const saveResult = useMutation(api.results.saveResult);
 
-  // ---------------- Load test active flag
+  // ---------------- Load testActive flag & studentId from sessionStorage (client only)
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     setIsActive(sessionStorage.getItem("testActive") === "true");
+    const sid = sessionStorage.getItem("studentId");
+    if (sid) setStoredStudentId(sid);
   }, []);
 
   // ---------------- Save result helper -----------------
@@ -184,9 +187,19 @@ useEffect(() => {
       };
       console.log("FINAL RESULT:", resultObj);
 
+      let resolvedStudentId = studentId ?? storedStudentId ?? null;
+      let sessionId = null;
+
+      if (typeof window !== "undefined") {
+        if (!resolvedStudentId) {
+          resolvedStudentId = sessionStorage.getItem("studentId");
+        }
+        sessionId = sessionStorage.getItem("sessionId");
+      }
+
       await saveResult({
-        studentId: studentId ?? sessionStorage.getItem("studentId"),
-        sessionId: sessionStorage.getItem("sessionId"),
+        studentId: resolvedStudentId,
+        sessionId,
         paragraphId: paragraphIdRef.current,
         symbols: correctChars,
         seconds: secondsTaken,
@@ -195,7 +208,7 @@ useEffect(() => {
         text: finalInput,
       });
     },
-    [saveResult, studentId, text]
+    [saveResult, studentId, storedStudentId, text]
   );
 
   // ---------------- Auto submit -----------------
@@ -214,9 +227,11 @@ useEffect(() => {
       seconds: secRef.current,
     });
 
-    sessionStorage.removeItem("testActive");
-    sessionStorage.removeItem("studentId");
-    sessionStorage.removeItem("typingState");
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("testActive");
+      sessionStorage.removeItem("studentId");
+      sessionStorage.removeItem("typingState");
+    }
 
     await fetch("/api/logout", { method: "POST" });
     router.replace("/test-submitted");
@@ -225,10 +240,10 @@ useEffect(() => {
   // ---------------- Restore logic -----------------
   useEffect(() => {
     if (!paragraph || !paragraph._id || !timeSetting) return;
+    if (typeof window === "undefined") return;
 
     console.log("Paragraph loaded. ID:", paragraph._id);
 
-    // FIX: Trim leading BOM, tabs, spaces, newlines
     const cleaned = (paragraph.content || "").replace(/^\s+|\uFEFF/g, "");
     console.log("CLEANED PARAGRAPH:", cleaned.slice(0, 50));
 
@@ -268,7 +283,10 @@ useEffect(() => {
               secRef.current++;
 
               setCountDown((prev) => {
-                console.log("Timer tick (restore):", { sec: secRef.current, countDown: prev });
+                console.log("Timer tick (restore):", {
+                  sec: secRef.current,
+                  countDown: prev,
+                });
 
                 if (prev <= 1) {
                   clearInterval(intervalRef.current);
@@ -288,11 +306,12 @@ useEffect(() => {
         setCountDown(timeSetting.duration ?? 60);
       }
     }, 30);
-  }, [paragraph, timeSetting, doAutoSubmit]);
+  }, [paragraph, timeSetting, doAutoSubmit, countDown]);
 
   // ---------------- Save state to sessionStorage -----------------
   useEffect(() => {
     if (!paragraphIdRef.current) return;
+    if (typeof window === "undefined") return;
 
     const data = {
       text: userInputState,
@@ -308,10 +327,19 @@ useEffect(() => {
 
     sessionStorage.setItem("typingState", JSON.stringify(data));
     console.log("SAVING INPUT STATE:", data);
-  }, [userInputState, countDown, started, finished, cursorIndex, errorIndex]);
+  }, [
+    userInputState,
+    countDown,
+    started,
+    finished,
+    cursorIndex,
+    errorIndex,
+  ]);
 
   // ---------------- Cleanup -----------------
-  useEffect(() => () => clearInterval(intervalRef.current), []);
+  useEffect(() => {
+    return () => clearInterval(intervalRef.current);
+  }, []);
 
   // ---------------- Start timer -----------------
   const startTimer = useCallback(() => {
@@ -350,13 +378,19 @@ useEffect(() => {
     if (!typingEnabled) return;
 
     const value = e.target.value;
+    const prevValue = userInputRef.current;
+
+    // Count backspaces
+    if (value.length < prevValue.length) {
+      backspaceCountRef.current += prevValue.length - value.length;
+    }
+
     setCursorIndex(value.length);
 
     if (value.length > text.length) return;
 
     if (errorIndex !== null) {
       if (value.length < userInputRef.current.length) {
-        backspaceCountRef.current++;
         userInputRef.current = value;
         setUserInputState(value);
 
@@ -385,14 +419,18 @@ useEffect(() => {
   };
 
   // ---------------- Render -----------------
-  if (!studentId && !sessionStorage.getItem("studentId"))
+  // ❗ SSR-safe: no direct sessionStorage here
+  if (!studentId && !storedStudentId) {
     return <Loader>Loading...</Loader>;
+  }
 
-  if (!paragraph || !timeSetting)
+  if (!paragraph || !timeSetting) {
     return <Loader>Loading test...</Loader>;
+  }
 
-  if (countDown === null)
+  if (countDown === null) {
     return <Loader>Preparing...</Loader>;
+  }
 
   return (
     <OuterWrapper>
