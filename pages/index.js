@@ -1,10 +1,11 @@
 import dynamic from "next/dynamic";
 import HomePage from "../components/HomePage";
 
-function IndexPage() {
-  return <HomePage />;
-}
-
-export default dynamic(() => Promise.resolve(IndexPage), {
+// ✅ Disable SSR for the entire home page
+const NoSSRHome = dynamic(() => Promise.resolve(HomePage), {
   ssr: false,
 });
+
+export default function IndexPage() {
+  return <NoSSRHome />;
+}
