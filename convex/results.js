@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-// ✅ Check if student already attempted
+// Check if student already attempted
 export const hasAttempted = query({
   args: {
     studentId: v.string(),
@@ -19,12 +19,11 @@ export const hasAttempted = query({
   },
 });
 
-// ✅ Save Result
+//Save Result 
 export const saveResult = mutation({
   args: {
     studentId: v.string(),
     name: v.optional(v.string()),  
-    sessionId: v.id("testSessions"),
     paragraphId: v.id("paragraphs"),
     symbols: v.number(),
     seconds: v.number(),
@@ -34,10 +33,10 @@ export const saveResult = mutation({
   },
 
   handler: async (ctx, args) => {
-    if (!args.studentId || !args.paragraphId || !args.sessionId) {
+    if (!args.studentId || !args.paragraphId) {
       return { success: false, message: "Missing required fields" };
     }
-
+    //check if already attempted
     const existing = await ctx.db
       .query("results")
       .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
@@ -48,6 +47,7 @@ export const saveResult = mutation({
       return { success: false, message: "Already attempted" };
     }
 
+    //get paragraph
     const paragraph = await ctx.db.get(args.paragraphId);
     if (!paragraph) {
       return { success: false, message: "Paragraph not found" };
@@ -56,10 +56,23 @@ export const saveResult = mutation({
     const paragraphContent = paragraph.content ?? "";
     const originalSymbols = paragraphContent.length;
 
+    //  fetch student from db
+    const student = await ctx.db
+      .query("students")
+      .withIndex("by_applicationNumber", (q) =>
+        q.eq("applicationNumber", args.studentId)
+      )
+      .first();
+
+    if (!student) {
+      return { success: false, message: "Student not found" };
+    }
+
+    
     await ctx.db.insert("results", {
       studentId: args.studentId,
-      name: args.name,     
-      sessionId: args.sessionId, 
+      name: args.name ?? student.name ?? "N/A",
+      sessionId: student.sessionId,   
       paragraphId: args.paragraphId,
       symbols: args.symbols,
       seconds: args.seconds,
@@ -75,7 +88,7 @@ export const saveResult = mutation({
   },
 });
 
-// ✅ Get all results - admin
+  //get all results -admin
 export const getAllResults = query({
   handler: async (ctx) => {
     return await ctx.db
@@ -86,25 +99,23 @@ export const getAllResults = query({
   },
 });
 
-// ✅ Get results by session (WITH session name - FIXED)
+   // get results be session
 export const getResultsBySession = query({
-  args: { sessionId: v.id("testSessions") }, 
+  args: { sessionId: v.id("testSessions") },
   handler: async (ctx, { sessionId }) => {
-    // 1️⃣ Get all results for this session
+    //  get results
     const results = await ctx.db
       .query("results")
       .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
       .collect();
 
-    // 2️⃣ Fetch session safely (NO any needed now ✅)
+    //  get session name
     const session = await ctx.db.get(sessionId);
 
-    // 3️⃣ Attach session name to every result
     return results.map((r) => ({
       ...r,
-      sessionName: session?.name || "N/A", 
-      name: r.name || "N/A",  
+      sessionName: session?.name || "N/A",
+      name: r.name || "N/A",
     }));
   },
 });
-

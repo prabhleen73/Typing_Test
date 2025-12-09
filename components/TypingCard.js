@@ -203,7 +203,6 @@ export default function TypingCard({ studentId }) {
       await saveResult({
         studentId: resolvedStudentId,
         name: studentName,
-        sessionId,
         paragraphId: paragraphIdRef.current,
         symbols: correctChars,
         seconds: secondsTaken,
