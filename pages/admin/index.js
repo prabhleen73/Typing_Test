@@ -1,11 +1,37 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import styled from "styled-components";
+import { useRouter } from "next/router";
 
 export default function AdminDashboard() {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+  const [mounted, setMounted] = useState(false); // ✅ hydration safety
 
+  // ✅ Prevent hydration mismatch
   useEffect(() => {
-    // Lock current page in history
+    setMounted(true);
+  }, []);
+
+  // ✅ ADMIN AUTH GUARD
+  useEffect(() => {
+    if (!mounted) return;
+    if (typeof window === "undefined") return;
+
+    const isAdmin = sessionStorage.getItem("isAdmin");
+
+    if (isAdmin !== "true") {
+      router.replace("/admin/admin-login"); // ✅ correct path
+    } else {
+      setChecking(false);
+    }
+  }, [router, mounted]);
+
+  // ✅ LOCK BACK BUTTON
+  useEffect(() => {
+    if (!mounted) return;
+    if (typeof window === "undefined") return;
+
     window.history.pushState(null, "", window.location.href);
 
     const handlePopState = () => {
@@ -13,11 +39,17 @@ export default function AdminDashboard() {
     };
 
     window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [mounted]);
 
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
-  }, []);
+  // ✅ LOADING SCREEN
+  if (!mounted || checking) {
+    return (
+      <div style={{ textAlign: "center", marginTop: "40vh", fontSize: "18px" }}>
+        Verifying admin access...
+      </div>
+    );
+  }
 
   return (
     <PageWrapper>
@@ -30,7 +62,6 @@ export default function AdminDashboard() {
             <span>📤</span> Upload Paragraph File
           </MenuItem>
 
-          {/* ⭐ NEW MENU ITEM — Manage Sessions */}
           <MenuItem href="/admin/sessions">
             <span>🗂️</span> Manage Sessions
           </MenuItem>
@@ -42,6 +73,17 @@ export default function AdminDashboard() {
           <MenuItem href="/admin/import-students">
             <span>📥</span> Import Students
           </MenuItem>
+
+          {/* ✅ ADMIN LOGOUT */}
+          <LogoutButton
+            onClick={() => {
+              sessionStorage.removeItem("isAdmin");
+              sessionStorage.removeItem("adminUser");
+              router.replace("/admin/admin-login"); // ✅ FIXED PATH
+            }}
+          >
+            🚪 Logout Admin
+          </LogoutButton>
         </Menu>
       </Card>
     </PageWrapper>
@@ -67,14 +109,20 @@ const Card = styled.div`
   max-width: 600px;
   padding: 40px;
   border-radius: 16px;
-  box-shadow: 0 10px 28px rgba(0,0,0,0.10);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   animation: fadeIn 0.4s ease;
 
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(15px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(15px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 `;
 
@@ -118,6 +166,21 @@ const MenuItem = styled(Link)`
     background: #ffffff;
     border-color: #b8c3cf;
     transform: translateY(-2px);
-    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+  }
+`;
+
+const LogoutButton = styled.button`
+  background: #564dffff;
+  padding: 18px;
+  border-radius: 12px;
+  font-size: 18px;
+  border: none;
+  color: white;
+  cursor: pointer;
+  margin-top: 20px;
+
+  &:hover {
+    background: #564dffff;
   }
 `;
