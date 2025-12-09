@@ -67,7 +67,8 @@ const generatePDF = (r, index) => {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  const sessionLabel = `Session ${index + 1}`;
+ const sessionLabel = r.sessionName || "N/A";
+
 
   // ✅ PROFESSIONAL HEADER
   const addHeader = () => {
@@ -192,6 +193,7 @@ const generatePDF = (r, index) => {
             <thead>
               <tr>
                 <th>Student ID</th>
+                <th>Student Name</th> 
                 <th>Paragraph</th>
                 <th>WPM</th>
                 <th>Accuracy</th>
@@ -207,6 +209,7 @@ const generatePDF = (r, index) => {
               {results.map((r,index) => (
                 <tr key={r._id}>
                   <td>{r.studentId}</td>
+                  <td>{r.name}</td>
 
                   <td>
                     <ParagraphButton

@@ -79,7 +79,16 @@ export default function TestPage() {
     });
 
       //  STORE IN SESSION STORAGE FOR TypingCard
+    
+      const student = await convex.query(api.student.getStudentById, {
+        studentId: sid,
+      });
+
+      // ✅ STORE EVERYTHING PROPERLY
+      sessionStorage.setItem("studentId", sid);
       sessionStorage.setItem("sessionId", sessionId);
+      sessionStorage.setItem("studentName", student?.name || "");
+
 
       const exists = await convex.query(api.student.checkExists, {
         studentId: sid,

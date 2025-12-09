@@ -5,7 +5,7 @@ export default defineSchema({
 
   // Students table
 students: defineTable({
-  name: v.string(),
+  name: v.optional(v.string()),   
   applicationNumber: v.string(),
   dob: v.string(),
   passwordHash: v.string(),
@@ -35,6 +35,7 @@ students: defineTable({
   // Results table
   results: defineTable({
     studentId: v.string(),
+    name: v.optional(v.string()), 
     sessionId: v.id("testSessions"),
     paragraphId: v.id("paragraphs"),
     symbols: v.number(),

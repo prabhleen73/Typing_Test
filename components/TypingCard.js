@@ -127,6 +127,7 @@ export default function TypingCard({ studentId }) {
   const [cursorIndex, setCursorIndex] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [storedStudentId, setStoredStudentId] = useState(null);
+  const [studentName, setStudentName] = useState("");
 
   // REFS -----------------------------------
   const paragraphIdRef = useRef(null);
@@ -148,6 +149,8 @@ export default function TypingCard({ studentId }) {
     setIsActive(sessionStorage.getItem("testActive") === "true");
     const sid = sessionStorage.getItem("studentId");
     if (sid) setStoredStudentId(sid);
+    const storedName = sessionStorage.getItem("studentName");
+  if (storedName) setStudentName(storedName);
   }, []);
 
   // ---------------- Save result helper -----------------
@@ -199,6 +202,7 @@ export default function TypingCard({ studentId }) {
 
       await saveResult({
         studentId: resolvedStudentId,
+        name: studentName,
         sessionId,
         paragraphId: paragraphIdRef.current,
         symbols: correctChars,
@@ -208,7 +212,7 @@ export default function TypingCard({ studentId }) {
         text: finalInput,
       });
     },
-    [saveResult, studentId, storedStudentId, text]
+    [saveResult, studentId, storedStudentId, text ,studentName,]
   );
 
   // ---------------- Auto submit -----------------

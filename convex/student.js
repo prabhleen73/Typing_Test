@@ -162,3 +162,15 @@ export const getStudentSession = query({
     return student?.sessionId ?? null;
   },
 });
+
+export const getStudentById = query({
+  args: { studentId: v.string() },
+  handler: async (ctx, { studentId }) => {
+    return await ctx.db
+      .query("students")
+      .withIndex("by_applicationNumber", (q) =>
+        q.eq("applicationNumber", studentId)
+      )
+      .first();
+  },
+});

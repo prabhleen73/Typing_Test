@@ -19,11 +19,12 @@ export const hasAttempted = query({
   },
 });
 
-// ✅ Save Result (BULLETPROOF)
+// ✅ Save Result
 export const saveResult = mutation({
   args: {
     studentId: v.string(),
-    sessionId: v.string(), // ✅ STRING to match frontend
+    name: v.optional(v.string()),  
+    sessionId: v.id("testSessions"),
     paragraphId: v.id("paragraphs"),
     symbols: v.number(),
     seconds: v.number(),
@@ -57,7 +58,8 @@ export const saveResult = mutation({
 
     await ctx.db.insert("results", {
       studentId: args.studentId,
-      sessionId: args.sessionId, // ✅ GUARANTEED SAFE
+      name: args.name,     
+      sessionId: args.sessionId, 
       paragraphId: args.paragraphId,
       symbols: args.symbols,
       seconds: args.seconds,
@@ -84,13 +86,25 @@ export const getAllResults = query({
   },
 });
 
-// ✅ Get results by session
+// ✅ Get results by session (WITH session name - FIXED)
 export const getResultsBySession = query({
-  args: { sessionId: v.string() },
+  args: { sessionId: v.id("testSessions") }, 
   handler: async (ctx, { sessionId }) => {
-    return await ctx.db
+    // 1️⃣ Get all results for this session
+    const results = await ctx.db
       .query("results")
       .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
       .collect();
+
+    // 2️⃣ Fetch session safely (NO any needed now ✅)
+    const session = await ctx.db.get(sessionId);
+
+    // 3️⃣ Attach session name to every result
+    return results.map((r) => ({
+      ...r,
+      sessionName: session?.name || "N/A", 
+      name: r.name || "N/A",  
+    }));
   },
 });
+
