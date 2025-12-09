@@ -1,14 +1,18 @@
 import { useState } from "react";
 import styled from "styled-components";
 import Papa from "papaparse";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import Link from "next/link";
 
 export default function ImportStudents() {
   const [file, setFile] = useState(null);
+  const [selectedSession, setSelectedSession] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Fetch sessions
+  const sessions = useQuery(api.testSessions.getTestSessions);
 
   const createStudent = useMutation(api.student.createStudent);
 
@@ -23,12 +27,20 @@ export default function ImportStudents() {
       return;
     }
 
+    if (!selectedSession) {
+      setMessage("⚠ Please select a session before uploading.");
+      return;
+    }
+
+    const sessionObj = sessions?.find((s) => s._id === selectedSession);
+
     setLoading(true);
     setMessage("⏳ Reading CSV...");
 
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+
       complete: async ({ data }) => {
         let success = 0;
         let fail = 0;
@@ -48,10 +60,13 @@ export default function ImportStudents() {
               name,
               applicationNumber,
               dob,
+              sessionId: selectedSession,
+              sessionName: sessionObj?.name ?? "",
             });
 
             if (res.success) success++;
             else fail++;
+
           } catch (err) {
             console.error(err);
             fail++;
@@ -70,12 +85,28 @@ export default function ImportStudents() {
         <BackBtn href="/admin">← Back to Dashboard</BackBtn>
 
         <Title>📥 Import Students</Title>
-        <Subtitle>Upload a CSV file containing: <b>name, applicationNumber, dob</b></Subtitle>
+        <Subtitle>CSV must include: <b>name, applicationNumber, dob</b></Subtitle>
 
+        {/* SESSION DROPDOWN */}
+        <DropdownWrapper>
+          <label>Select Session:</label>
+          <select
+            value={selectedSession}
+            onChange={(e) => setSelectedSession(e.target.value)}
+          >
+            <option value="">-- Select Session --</option>
+            {sessions?.map((s) => (
+              <option key={s._id} value={s._id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </DropdownWrapper>
+
+        {/* FILE UPLOAD */}
         <UploadArea>
           <UploadLabel>Select CSV File</UploadLabel>
           <UploadInput type="file" accept=".csv" onChange={handleFileSelect} />
-
           {file && <FileName>📄 {file.name}</FileName>}
         </UploadArea>
 
@@ -88,6 +119,7 @@ export default function ImportStudents() {
     </Wrapper>
   );
 }
+
 
 /* ---------- Styled Components ---------- */
 
@@ -107,12 +139,6 @@ const Card = styled.div`
   padding: 40px;
   border-radius: 18px;
   box-shadow: 0 10px 35px rgba(0,0,0,0.12);
-  animation: fadeIn 0.3s ease;
-  
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
 `;
 
 const BackBtn = styled(Link)`
@@ -121,23 +147,29 @@ const BackBtn = styled(Link)`
   color: #3b82f6;
   margin-bottom: 10px;
   display: inline-block;
-
-  &:hover { text-decoration: underline; }
 `;
 
 const Title = styled.h1`
   font-size: 28px;
   font-weight: 700;
-  margin: 10px 0;
   text-align: center;
-  color: #111827;
 `;
 
 const Subtitle = styled.p`
   text-align: center;
   color: #6b7280;
-  margin-bottom: 30px;
-  font-size: 15px;
+  margin-bottom: 25px;
+`;
+
+const DropdownWrapper = styled.div`
+  margin-bottom: 20px;
+
+  select {
+    width: 100%;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+  }
 `;
 
 const UploadArea = styled.div`
@@ -150,15 +182,13 @@ const UploadArea = styled.div`
 `;
 
 const UploadLabel = styled.label`
-  display: block;
   font-weight: 600;
   margin-bottom: 12px;
-  color: #374151;
+  display: block;
 `;
 
 const UploadInput = styled.input`
   font-size: 16px;
-  cursor: pointer;
 `;
 
 const FileName = styled.div`
@@ -170,22 +200,12 @@ const FileName = styled.div`
 const UploadButton = styled.button`
   background: #3b82f6;
   color: white;
-  padding: 12px 20px;
+  padding: 12px;
   border-radius: 10px;
-  font-size: 17px;
   width: 100%;
+  font-size: 17px;
   border: none;
   cursor: pointer;
-  transition: 0.2s;
-
-  &:hover {
-    background: #2563eb;
-  }
-
-  &:disabled {
-    background: #93c5fd;
-    cursor: not-allowed;
-  }
 `;
 
 const StatusMessage = styled.p`
@@ -193,5 +213,4 @@ const StatusMessage = styled.p`
   text-align: center;
   font-size: 16px;
   font-weight: 600;
-  color: #374151;
 `;

@@ -23,11 +23,11 @@ export default async function handler(req, res) {
     }
   }
 
-  // DELETE COOKIE (must include Domain)
-  res.setHeader(
-    "Set-Cookie",
-    "session=; Path=/; Domain=10.40.113.16; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
-  );
+res.setHeader(
+  "Set-Cookie",
+  "session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+);
+
 
   return res.status(200).json({ success: true });
 }

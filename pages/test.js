@@ -73,6 +73,23 @@ export default function TestPage() {
       const sid = session.studentId;
       if (mounted) setStudentId(sid);
 
+          // ⭐ FETCH STUDENT SESSION ID HERE
+    const sessionId = await convex.query(api.student.getStudentSession, {
+      studentId: sid
+    });
+
+      //  STORE IN SESSION STORAGE FOR TypingCard
+    
+      const student = await convex.query(api.student.getStudentById, {
+        studentId: sid,
+      });
+
+      // ✅ STORE EVERYTHING PROPERLY
+      sessionStorage.setItem("studentId", sid);
+      sessionStorage.setItem("sessionId", sessionId);
+      sessionStorage.setItem("studentName", student?.name || "");
+
+
       const exists = await convex.query(api.student.checkExists, {
         studentId: sid,
       });

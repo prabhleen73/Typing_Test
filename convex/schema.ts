@@ -4,14 +4,18 @@ import { v } from "convex/values";
 export default defineSchema({
 
   // Students table
-  students: defineTable({
-    name: v.string(),
-    applicationNumber: v.string(),
-    dob: v.string(),
-    passwordHash: v.string(),
-  })
-    .index("by_applicationNumber", ["applicationNumber"])
-    .index("by_name", ["name"]),
+students: defineTable({
+  name: v.optional(v.string()),   
+  applicationNumber: v.string(),
+  dob: v.string(),
+  passwordHash: v.string(),
+  sessionId: v.id("testSessions"),   
+  sessionName: v.string(), 
+})
+  .index("by_applicationNumber", ["applicationNumber"])
+  .index("by_name", ["name"])
+  .index("by_sessionId", ["sessionId"]),
+
 
   // Secure backend sessions
   sessions: defineTable({
@@ -31,6 +35,8 @@ export default defineSchema({
   // Results table
   results: defineTable({
     studentId: v.string(),
+    name: v.optional(v.string()), 
+    sessionId: v.id("testSessions"),
     paragraphId: v.id("paragraphs"),
     symbols: v.number(),
     seconds: v.number(),
@@ -42,5 +48,6 @@ export default defineSchema({
     submittedAt: v.string(),
   })
     .index("by_student", ["studentId"])
-    .index("by_submittedAt", ["submittedAt"]),
+    .index("by_submittedAt", ["submittedAt"])
+    .index("by_session", ["sessionId"]),
 });
