@@ -22,8 +22,9 @@ export default function AdminLogin() {
   const handleLogin = (e) => {
     e.preventDefault();
 
-    const ADMIN_USER = process.env.NEXT_PUBLIC_ADMIN_USERNAME;
-    const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
+    const ADMIN_USER = process.env.NEXT_PUBLIC_ADMIN_USERNAME || "admin";
+const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
+
 
     if (username === ADMIN_USER && password === ADMIN_PASS) {
       sessionStorage.setItem("isAdmin", "true");

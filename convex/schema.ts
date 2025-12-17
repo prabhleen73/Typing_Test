@@ -50,4 +50,9 @@ students: defineTable({
     .index("by_student", ["studentId"])
     .index("by_submittedAt", ["submittedAt"])
     .index("by_session", ["sessionId"]),
+
+    
+    timeSettings: defineTable({
+    duration: v.number(),
+  }),
 });

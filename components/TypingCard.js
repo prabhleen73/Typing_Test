@@ -96,6 +96,12 @@ const StartButton = styled.button`
   cursor: pointer;
   border: none;
 `;
+const formatTime = (seconds) => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+};
+
 
 // COMPONENT --------------------------------
 export default function TypingCard({ studentId }) {
@@ -440,7 +446,9 @@ export default function TypingCard({ studentId }) {
       <TypingCardContainer>
         <Header>
           <Title>Typing Test</Title>
-          <Timer urgent={countDown <= 10}>{countDown}s</Timer>
+          <Timer urgent={countDown <= 10}>
+            {formatTime(countDown)}
+          </Timer>
         </Header>
 
         <TypingPanel>

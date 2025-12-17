@@ -19,7 +19,7 @@
     "styled-components": "^5.3.1"
   },
   "devDependencies": {
-    "convex": "^1.30.0",
+    "convex": "^1.31.0",
     "cross-env": "7.0.3",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.5"

@@ -40,42 +40,61 @@ export default function ImportStudents() {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-
       complete: async ({ data }) => {
         let success = 0;
         let fail = 0;
 
         for (const row of data) {
+          console.log("Row data:", row);  // Debugging line to check each row
+
           try {
             const name = row.name?.trim();
             const applicationNumber = row.applicationNumber?.trim();
-            const dob = row.dob?.trim();
+            const dateOfBirth = row.dateOfBirth?.trim(); // Use 'dateOfBirth' instead of 'dob'
 
-            if (!name || !applicationNumber || !dob) {
+            // Log the parsed data to check
+            console.log("Parsed fields:", { name, applicationNumber, dateOfBirth });
+
+            // Check for missing fields
+            if (!name || !applicationNumber || !dateOfBirth) {
+              console.log("Skipping row due to missing data:", { name, applicationNumber, dateOfBirth });
               fail++;
               continue;
             }
 
+            // Create student record
             const res = await createStudent({
               name,
               applicationNumber,
-              dob,
+              dob: dateOfBirth, // Send 'dateOfBirth' as 'dob' in the mutation
               sessionId: selectedSession,
               sessionName: sessionObj?.name ?? "",
             });
 
-            if (res.success) success++;
-            else fail++;
+            if (res.success) {
+              success++;
+            } else {
+              console.log("Error in creating student:", res); // Log error response from mutation
+              fail++;
+            }
 
           } catch (err) {
-            console.error(err);
+            console.error("Error in row processing:", err); // Log any error during row processing
             fail++;
           }
         }
 
+        // Display success/failure message
         setMessage(`✔ Upload complete — ${success} added, ${fail} skipped`);
         setLoading(false);
       },
+
+      // Handle CSV parsing error
+      error: (error) => {
+        console.error("Error parsing CSV:", error.message);
+        setMessage("⚠ Error parsing CSV file.");
+        setLoading(false);
+      }
     });
   };
 
@@ -85,7 +104,7 @@ export default function ImportStudents() {
         <BackBtn href="/admin">← Back to Dashboard</BackBtn>
 
         <Title>📥 Import Students</Title>
-        <Subtitle>CSV must include: <b>name, applicationNumber, dob</b></Subtitle>
+        <Subtitle>CSV must include: <b>applicationNumber, name, dateOfBirth</b></Subtitle>
 
         {/* SESSION DROPDOWN */}
         <DropdownWrapper>
@@ -119,7 +138,6 @@ export default function ImportStudents() {
     </Wrapper>
   );
 }
-
 
 /* ---------- Styled Components ---------- */
 
