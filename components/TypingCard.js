@@ -185,8 +185,7 @@ export default function TypingCard({ studentId }) {
           ? 0
           : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
 
-      const wpm = Math.round((correctChars * 60) / (5 * secondsTaken));
-
+      const wpm =(correctChars * 60) / (5 * secondsTaken);
       const resultObj = {
         finalInput,
         correctChars,

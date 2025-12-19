@@ -2,19 +2,8 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
 
-// hash string using WebCrypto SHA-256
-async function hashString(str) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join(""); // hex string
-}
 
-/* ------------------------------------------
-   CREATE STUDENT (Admin Import CSV)
----------------------------------------------*/
+//create student
 export const createStudent = mutation({
   args: {
     name: v.string(),
@@ -35,8 +24,7 @@ export const createStudent = mutation({
     const [dd, mm, yyyy] = dob.split("-");
     const ddmmyyyy = `${dd}${mm}${yyyy}`;
 
-    const generatedPassword = `${firstFour}${ddmmyyyy}`;
-    const passwordHash = await hashString(generatedPassword);
+    const generatedPassword = `${firstFour}${yyyy}`;
 
     const existing = await ctx.db
       .query("students")
@@ -49,7 +37,7 @@ export const createStudent = mutation({
       await ctx.db.patch(existing._id, {
         name,
         dob,
-        passwordHash,
+        password: generatedPassword,
         sessionId,
         sessionName,
       });
@@ -61,7 +49,7 @@ export const createStudent = mutation({
       name,
       applicationNumber,
       dob,
-      passwordHash,
+      password: generatedPassword,
       sessionId,
       sessionName,
     });
@@ -100,13 +88,12 @@ export const verifyStudent = mutation({
       return { success: false, message: "Invalid credentials" };
     }
 
-    const incomingHash = await hashString(password);
+    if (password !== student.password) {
+  return { success: false, message: "Invalid credentials" };
+}
 
-    if (incomingHash !== student.passwordHash) {
-      return { success: false, message: "Invalid credentials" };
-    }
 
-    // ⭐ CREATE SESSION (1 hour expiry)
+    //  CREATE SESSION (1 hour expiry)
     const expiresInMs = 60 * 60 * 1000;
 
     const session = await ctx.runMutation(api.sessions.createSession, {

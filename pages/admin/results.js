@@ -4,6 +4,24 @@ import styled from "styled-components";
 import { useState } from "react";
 import { jsPDF } from "jspdf";
 
+const addPerStudentFooter = (doc, startPage, endPage) => {
+  const total = endPage - startPage + 1;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  for (let i = startPage; i <= endPage; i++) {
+    doc.setPage(i);
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+
+    const current = i - startPage + 1;
+    doc.text(`${current}/${total}`, pageWidth - 14, pageHeight - 10, {
+      align: "right",
+    });
+  }
+};
+
+
 export default function Results() {
   const sessions = useQuery(api.testSessions.getTestSessions);
   const [selectedSession, setSelectedSession] = useState("");
@@ -56,10 +74,23 @@ export default function Results() {
   doc.text("Typed Paragraph", 14, 44);
 
   doc.setFontSize(12);
-  doc.text(r.text || "No text available", 14, 54, {
-    maxWidth: 180,
-    lineHeightFactor: 1.6,
-  });
+
+let yPos = 54;
+const lineHeight = 7;
+
+const paragraphText = r.text || "No text available";
+
+const lines = doc.splitTextToSize(paragraphText, 180);
+
+lines.forEach((line) => {
+  if (yPos > pageHeight - 20) {
+    doc.addPage();
+    yPos = 20;
+  }
+  doc.text(line, 14, yPos);
+  yPos += lineHeight;
+});
+
 
   // ✅ FOOTER WITH PERFECT PAGE FORMAT (1/2, 2/2)
   const pageCount = doc.getNumberOfPages();
@@ -69,16 +100,16 @@ export default function Results() {
     doc.setFontSize(9);
     doc.setTextColor(120, 120, 120);
 
-    // ✅ Left → Submitted time
+    //  Left → Submitted time
     doc.text(`Submitted: ${submittedTime}`, 14, pageHeight - 10);
 
-    // ✅ Right → Page number EXACT format: 1/2
+    //  Right → Page number EXACT format: 1/2
     doc.text(`${i}/${pageCount}`, pageWidth - 14, pageHeight - 10, {
       align: "right",
     });
   }
 
-  // ✅ OPEN PDF
+  // open pdf
   const pdfBlob = doc.output("blob");
   const pdfUrl = URL.createObjectURL(pdfBlob);
   window.open(pdfUrl, "_blank");
@@ -86,72 +117,125 @@ export default function Results() {
 
 
   //DOWNLOAD ALL PDFs 
-  const generateAllPDFs = () => {
-    if (!results || results.length === 0) {
-      alert("No results available.");
-      return;
+const generateAllPDFs = () => {
+  if (!results || results.length === 0) {
+    alert("No results available.");
+    return;
+  }
+
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const sortedResults = [...results].sort((a, b) => b.wpm - a.wpm);
+
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.text(
+    "RESULT OF TYPING TEST FOR THE POST OF __________ HELD IN COMPUTER CENTER ON DATE __________",
+    pageWidth / 2,
+    20,
+    { align: "center", maxWidth: pageWidth - 30 }
+  );
+
+  let y = 40;
+  const rowHeight = 8;
+  const col = { sno: 14, name: 30, roll: 90, wpm: 130, kph: 155 };
+
+  doc.setFontSize(11);
+  doc.rect(14, y, pageWidth - 28, rowHeight);
+  doc.text("S.No", col.sno + 2, y + 6);
+  doc.text("Name", col.name + 2, y + 6);
+  doc.text("Roll No", col.roll + 2, y + 6);
+  doc.text("WPM", col.wpm + 6, y + 6);
+  doc.text("Key Depressions / Hour", col.kph + 2, y + 6);
+
+  y += rowHeight;
+  doc.setFont("helvetica", "normal");
+
+  sortedResults.forEach((r, index) => {
+    if (y > pageHeight - 15) {
+      doc.addPage();
+      y = 20;
     }
 
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
+    const kph = Math.round((r.symbols / r.seconds) * 3600);
 
-    [...results]
-      .sort((a, b) => b.wpm - a.wpm)
-      .forEach((r, index) => {
-        if (index !== 0) doc.addPage();
+    doc.rect(14, y, pageWidth - 28, rowHeight);
+    doc.line(col.name, y, col.name, y + rowHeight);
+    doc.line(col.roll, y, col.roll, y + rowHeight);
+    doc.line(col.wpm, y, col.wpm, y + rowHeight);
+    doc.line(col.kph, y, col.kph, y + rowHeight);
 
-        const sessionLabel = r.sessionName || "N/A";
-        const studentName = r.name || "N/A";
+    doc.text(String(index + 1), col.sno + 2, y + 6);
+    doc.text(r.name || "N/A", col.name + 2, y + 6);
+    doc.text(r.studentId || "N/A", col.roll + 2, y + 6);
+    doc.text(String(r.wpm), col.wpm + 6, y + 6);
+    doc.text(String(kph), col.kph + 6, y + 6);
 
-        doc.setFillColor(240, 245, 255);
-        doc.rect(0, 0, pageWidth, 30, "F");
+    y += rowHeight;
+  });
 
-        doc.setFontSize(15);
-        doc.text("Typing Test Report", pageWidth / 2, 12, {
-          align: "center",
-        });
+  
+    //result
+  sortedResults.forEach((r) => {
+    doc.addPage(); // start new student
+    const startPage = doc.getNumberOfPages();
 
-        doc.setFontSize(11);
-        doc.text(`Student ID: ${r.studentId}`, 14, 20);
-        doc.text(`Name: ${studentName}`, pageWidth / 2, 20, {
-          align: "center",
-        });
-        doc.text(`Time: ${r.seconds} sec`, pageWidth - 14, 20, {
-          align: "right",
-        });
+    const sessionLabel = r.sessionName || "N/A";
+    const studentName = r.name || "N/A";
 
-        doc.setFontSize(10);
-        doc.text(`Session: ${sessionLabel}`, 14, 27);
-        doc.text(`WPM: ${r.wpm}`, pageWidth / 2, 27, {
-          align: "center",
-        });
-        doc.text(`Correct Characters: ${r.symbols}`, pageWidth - 14, 27, {
-          align: "right",
-        });
+    // HEADER
+    doc.setFillColor(240, 245, 255);
+    doc.rect(0, 0, pageWidth, 30, "F");
 
-        doc.setFontSize(15);
-        doc.text("Typed Paragraph", 14, 44);
+    doc.setFontSize(15);
+    doc.text("Typing Test Report", pageWidth / 2, 12, { align: "center" });
 
-        doc.setFontSize(12);
-        doc.text(r.text || "No text available", 14, 54, {
-          maxWidth: 180,
-          lineHeightFactor: 1.6,
-        });
+    doc.setFontSize(11);
+    doc.text(`Student ID: ${r.studentId}`, 14, 20);
+    doc.text(`Name: ${studentName}`, pageWidth / 2, 20, { align: "center" });
+    doc.text(`Time: ${r.seconds} sec`, pageWidth - 14, 20, { align: "right" });
 
-        doc.setFontSize(10);
-        doc.text(
-          `${index + 1}/${results.length}`,
-          pageWidth / 2,
-          pageHeight - 10,
-          { align: "center" }
-        );
-      });
+    doc.setFontSize(10);
+    doc.text(`Session: ${sessionLabel}`, 14, 27);
+    doc.text(`WPM: ${r.wpm}`, pageWidth / 2, 27, { align: "center" });
+    doc.text(`Correct Characters: ${r.symbols}`, pageWidth - 14, 27, {
+      align: "right",
+    });
 
-    const pdfBlob = doc.output("blob");
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, "_blank");
-  };
+    // CONTENT
+    doc.setFontSize(15);
+    doc.text("Typed Paragraph", 14, 44);
+
+    doc.setFontSize(12);
+    let yPos = 54;
+    const lineHeight = 7;
+
+    const paragraphText = r.text || "No typed text available";
+    const lines = doc.splitTextToSize(paragraphText, 180);
+
+    lines.forEach((line) => {
+      if (yPos > pageHeight - 20) {
+        doc.addPage();
+        yPos = 20;
+      }
+      doc.text(line, 14, yPos);
+      yPos += lineHeight;
+    });
+
+    const endPage = doc.getNumberOfPages();
+
+    // Reset page numbering per student
+    addPerStudentFooter(doc, startPage, endPage);
+  });
+
+  const pdfBlob = doc.output("blob");
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+  window.open(pdfUrl, "_blank");
+};
+
+
 
   return (
     <Container>

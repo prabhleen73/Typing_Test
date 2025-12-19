@@ -8,7 +8,7 @@ students: defineTable({
   name: v.optional(v.string()),   
   applicationNumber: v.string(),
   dob: v.string(),
-  passwordHash: v.string(),
+  password: v.string(),
   sessionId: v.id("testSessions"),   
   sessionName: v.string(), 
 })

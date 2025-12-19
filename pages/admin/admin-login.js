@@ -5,18 +5,18 @@ import styled from "styled-components";
 export default function AdminLogin() {
   const router = useRouter();
 
-  const [mounted, setMounted] = useState(false); // ✅ hydration fix
+  const [mounted, setMounted] = useState(false); // 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  // ✅ Run only on client
+  //  Run only on client
   useEffect(() => {
     setMounted(true);
   }, []);
 
   if (!mounted) {
-    return null; // ✅ prevents hydration mismatch
+    return null; 
   }
 
   const handleLogin = (e) => {
