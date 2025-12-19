@@ -59,14 +59,12 @@ export const createStudent = mutation({
 });
 
 
-/* ------------------------------------------
-   VERIFY STUDENT → CREATE SESSION
----------------------------------------------*/
+//verify student - create session
 export const verifyStudent = mutation({
   args: {
     username: v.optional(v.string()),
     password: v.optional(v.string()),
-    name: v.optional(v.string()), // legacy alias
+    name: v.optional(v.string()),
   },
 
   handler: async (ctx, args) => {
@@ -79,7 +77,7 @@ export const verifyStudent = mutation({
 
     const student = await ctx.db
       .query("students")
-      .withIndex("by_applicationNumber", (q) =>
+      .withIndex("by_applicationNumber", q =>
         q.eq("applicationNumber", username)
       )
       .first();
@@ -88,12 +86,42 @@ export const verifyStudent = mutation({
       return { success: false, message: "Invalid credentials" };
     }
 
+    //  BLOCK IF TEST ALREADY SUBMITTED
+    const existingResult = await ctx.db
+      .query("results")
+      .withIndex("by_student", q =>
+        q.eq("studentId", student.applicationNumber)
+      )
+      .first();
+
+    if (existingResult) {
+      return {
+        success: false,
+        message: "Test already submitted. Login not allowed."
+      };
+    }
+
+    //  BLOCK IF TEST ALREADY STARTED
+    const activeSession = await ctx.db
+      .query("sessions")
+      .withIndex("by_studentId", q =>
+        q.eq("studentId", student.applicationNumber)
+      )
+      .first();
+
+    if (activeSession && activeSession.testActive) {
+      return {
+        success: false,
+        message: "Test already started. Re-login not allowed."
+      };
+    }
+
+    //  NOW check password
     if (password !== student.password) {
-  return { success: false, message: "Invalid credentials" };
-}
+      return { success: false, message: "Invalid credentials" };
+    }
 
-
-    //  CREATE SESSION (1 hour expiry)
+    //  CREATE SESSION
     const expiresInMs = 60 * 60 * 1000;
 
     const session = await ctx.runMutation(api.sessions.createSession, {
@@ -101,7 +129,6 @@ export const verifyStudent = mutation({
       expiresInMs,
     });
 
-    // defensive: ensure session created
     if (!session || !session.token) {
       return {
         success: false,
@@ -112,11 +139,12 @@ export const verifyStudent = mutation({
     return {
       success: true,
       studentId: student.applicationNumber,
-      token: session.token,   // <-- returns `token`
+      token: session.token,
       expiresAt: session.expiresAt,
     };
   },
 });
+
 
 /* ------------------------------------------
    CHECK STUDENT EXISTS (used by /test)

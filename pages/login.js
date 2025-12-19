@@ -46,7 +46,7 @@ export default function LoginPage() {
           return;
         }
 
-        // ⭐ ONLY redirect if testActive = true
+        //  ONLY redirect if testActive = true
         if (session.valid && session.testActive) {
           router.replace("/test");
         }
@@ -63,53 +63,35 @@ export default function LoginPage() {
      LOGIN HANDLER
   ---------------------------------------------------- */
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setMessage("Checking credentials...");
+  e.preventDefault();
+  setMessage("Checking credentials...");
 
-    try {
-      const result = await verifyStudent({ username, password });
+  try {
+    const result = await verifyStudent({ username, password });
 
-      if (!result.success) {
-        setMessage("Invalid credentials.");
-        return;
-      }
-
-      // Delete old sessions
-      await convex.mutation(api.sessions.deleteOldSessions, {
-        studentId: result.studentId,
-      });
-
-      // Create new session
-      const sessionData = await convex.mutation(api.sessions.createSession, {
-        studentId: result.studentId,
-        expiresInMs: 60 * 60 * 1000,
-      });
-
-      if (!sessionData?.token) {
-        setMessage("Couldn't create session.");
-        return;
-      }
-
-      // Write cookie
-      await fetch("/api/set-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          token: sessionData.token,
-          expiresAt: sessionData.expiresAt,
-        }),
-      });
-
-      router.replace("/test");
-    } catch (err) {
-      setMessage("Server error. Try again.");
+    if (!result.success) {
+      setMessage(result.message);
+      return;
     }
-  };
 
-  /* --------------------------------------------------
-     UI
-  ---------------------------------------------------- */
+    // ✅ Store backend-created session
+    await fetch("/api/set-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        token: result.token,
+        expiresAt: result.expiresAt,
+      }),
+    });
+
+    router.replace("/test");
+  } catch (err) {
+    setMessage("Server error. Try again.");
+  }
+};
+
+  
   return (
     <Container>
       <Card>
