@@ -7,7 +7,15 @@ export default function TestSubmitted() {
   const router = useRouter();
 
   useEffect(() => {
-    // Show this page briefly, then go to login
+    //  HARD LOCK: prevent back navigation
+    window.history.pushState(null, "", window.location.href);
+    window.onpopstate = () => window.history.forward();
+
+    //  FINAL CLEANUP (safety net)
+    sessionStorage.clear();
+    localStorage.removeItem("typing_test_state");
+
+    // Redirect to login
     const t = setTimeout(() => {
       router.replace("/login");
     }, 1500);
