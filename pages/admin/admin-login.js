@@ -5,25 +5,26 @@ import styled from "styled-components";
 export default function AdminLogin() {
   const router = useRouter();
 
-  const [mounted, setMounted] = useState(false); // ✅ hydration fix
+  const [mounted, setMounted] = useState(false); // 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  // ✅ Run only on client
+  //  Run only on client
   useEffect(() => {
     setMounted(true);
   }, []);
 
   if (!mounted) {
-    return null; // ✅ prevents hydration mismatch
+    return null; 
   }
 
   const handleLogin = (e) => {
     e.preventDefault();
 
-    const ADMIN_USER = process.env.NEXT_PUBLIC_ADMIN_USERNAME;
-    const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
+    const ADMIN_USER = process.env.NEXT_PUBLIC_ADMIN_USERNAME || "admin";
+const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
+
 
     if (username === ADMIN_USER && password === ADMIN_PASS) {
       sessionStorage.setItem("isAdmin", "true");

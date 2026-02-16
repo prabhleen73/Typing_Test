@@ -23,6 +23,20 @@ export default function TestPage() {
   const [showFsWarning, setShowFsWarning] = useState(false);
 
   useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  // If test was already submitted, ensure testActive is cleared
+  const submitted = sessionStorage.getItem("testSubmitted") === "true";
+
+  if (submitted) {
+    sessionStorage.removeItem("testActive");
+    sessionStorage.removeItem("typingState");
+    sessionStorage.removeItem("testSubmitted");
+  }
+}, []);
+
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     const onPop = () => {
@@ -73,7 +87,7 @@ export default function TestPage() {
       const sid = session.studentId;
       if (mounted) setStudentId(sid);
 
-          // ⭐ FETCH STUDENT SESSION ID HERE
+          // FETCH STUDENT SESSION ID HERE
     const sessionId = await convex.query(api.student.getStudentSession, {
       studentId: sid
     });
@@ -84,7 +98,7 @@ export default function TestPage() {
         studentId: sid,
       });
 
-      // ✅ STORE EVERYTHING PROPERLY
+      //  STORE EVERYTHING PROPERLY
       sessionStorage.setItem("studentId", sid);
       sessionStorage.setItem("sessionId", sessionId);
       sessionStorage.setItem("studentName", student?.name || "");

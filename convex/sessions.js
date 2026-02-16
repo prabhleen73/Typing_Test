@@ -1,9 +1,10 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-// Generate a strong session token
+//  Generate a strong session token (Convex-safe)
 function randomToken() {
-  return crypto.randomUUID() + crypto.randomUUID();
+  //  crypto.randomUUID() is available in Convex runtime
+  return `${crypto.randomUUID()}_${crypto.randomUUID()}_${Date.now()}`;
 }
 
 // Create session after login
@@ -35,7 +36,7 @@ export const validateSession = query({
   handler: async (ctx, { token }) => {
     const session = await ctx.db
       .query("sessions")
-      .withIndex("by_token", q => q.eq("token", token))
+      .withIndex("by_token", (q) => q.eq("token", token))
       .first();
 
     if (!session) return { valid: false };
@@ -46,7 +47,7 @@ export const validateSession = query({
       studentId: session.studentId,
       testActive: session.testActive ?? false,
     };
-  }
+  },
 });
 
 // Update testActive (start/stop test)
@@ -59,7 +60,7 @@ export const updateTestActive = mutation({
   handler: async (ctx, { token, active }) => {
     const session = await ctx.db
       .query("sessions")
-      .withIndex("by_token", q => q.eq("token", token))
+      .withIndex("by_token", (q) => q.eq("token", token))
       .unique();
 
     if (!session) return { success: false };
@@ -67,7 +68,7 @@ export const updateTestActive = mutation({
     await ctx.db.patch(session._id, { testActive: active });
 
     return { success: true };
-  }
+  },
 });
 
 // Delete all sessions for a student (logout cleanup)
@@ -77,7 +78,7 @@ export const deleteOldSessions = mutation({
   handler: async (ctx, { studentId }) => {
     const sessions = await ctx.db
       .query("sessions")
-      .withIndex("by_studentId", q => q.eq("studentId", studentId))
+      .withIndex("by_studentId", (q) => q.eq("studentId", studentId))
       .collect();
 
     for (const s of sessions) {
@@ -85,7 +86,7 @@ export const deleteOldSessions = mutation({
     }
 
     return { deleted: sessions.length };
-  }
+  },
 });
 
 // Delete one session (normal logout)
@@ -95,11 +96,11 @@ export const deleteSession = mutation({
   handler: async (ctx, { token }) => {
     const session = await ctx.db
       .query("sessions")
-      .withIndex("by_token", q => q.eq("token", token))
+      .withIndex("by_token", (q) => q.eq("token", token))
       .first();
 
     if (session) await ctx.db.delete(session._id);
 
     return { success: true };
-  }
+  },
 });

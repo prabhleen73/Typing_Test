@@ -97,25 +97,16 @@ const StartButton = styled.button`
   border: none;
 `;
 
+const formatTime = (seconds) => {
+  const sec = Math.max(0, seconds ?? 0);
+  const minutes = Math.floor(sec / 60);
+  const remainingSeconds = sec % 60;
+  return `${minutes}:${remainingSeconds < 10 ? "0" : ""}${remainingSeconds}`;
+};
+
 // COMPONENT --------------------------------
 export default function TypingCard({ studentId }) {
   const router = useRouter();
-
-  // Prevent going back during test (runs only in browser)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handlePopState = () => {
-      window.history.forward();
-    };
-
-    window.history.pushState(null, null, window.location.href);
-    window.addEventListener("popstate", handlePopState);
-
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
-  }, []);
 
   const [text, setText] = useState("");
   const [countDown, setCountDown] = useState(null);
@@ -129,7 +120,10 @@ export default function TypingCard({ studentId }) {
   const [storedStudentId, setStoredStudentId] = useState(null);
   const [studentName, setStudentName] = useState("");
 
-  // REFS -----------------------------------
+  const [sessionId, setSessionId] = useState(null);
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  // REFS
   const paragraphIdRef = useRef(null);
   const userInputRef = useRef("");
   const secRef = useRef(0);
@@ -137,27 +131,50 @@ export default function TypingCard({ studentId }) {
   const completionTimeRef = useRef(null);
   const intervalRef = useRef(null);
   const submittedRef = useRef(false);
+  const draftSaveTimeoutRef = useRef(null);
 
   const paragraph = useQuery(api.paragraphs.getParagraph);
   const timeSetting = useQuery(api.timeSettings.getTimeSetting);
-  const saveResult = useMutation(api.results.saveResult);
 
-  // ---------------- Load testActive flag & studentId from sessionStorage (client only)
+  const saveResult = useMutation(api.results.saveResult);
+  const saveDraft = useMutation(api.typingDrafts.saveDraft);
+  const markSubmitted = useMutation(api.typingDrafts.markSubmitted);
+
+  // ✅ backend test active flag
+  const updateTestActive = useMutation(api.sessions.updateTestActive);
+
+  const resolvedStudentId = studentId ?? storedStudentId ?? null;
+
+  const draft = useQuery(
+    api.typingDrafts.getDraft,
+    resolvedStudentId && sessionId
+      ? { studentId: resolvedStudentId, sessionId }
+      : "skip"
+  );
+
+  // -------------------------------------------
+  // Load sessionStorage values
+  // -------------------------------------------
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     setIsActive(sessionStorage.getItem("testActive") === "true");
+
     const sid = sessionStorage.getItem("studentId");
     if (sid) setStoredStudentId(sid);
+
     const storedName = sessionStorage.getItem("studentName");
-  if (storedName) setStudentName(storedName);
+    if (storedName) setStudentName(storedName);
+
+    const sessId = sessionStorage.getItem("sessionId");
+    if (sessId) setSessionId(sessId);
   }, []);
 
-  // ---------------- Save result helper -----------------
+  // -------------------------------------------
+  // Save result helper
+  // -------------------------------------------
   const handleSaveResultToDB = useCallback(
     async ({ input, seconds }) => {
-      console.log("SAVE RESULT CALLED");
-
       const finalInput = input ?? userInputRef.current ?? "";
 
       let correctChars = 0;
@@ -171,37 +188,20 @@ export default function TypingCard({ studentId }) {
       const totalTyped = finalInput.length + backspaceCountRef.current;
       const mistakes = backspaceCountRef.current;
 
-      console.log("correctChars =", correctChars);
-      console.log("secondsTaken =", secondsTaken);
-
       const accuracy =
         totalTyped === 0
           ? 0
           : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
 
-      const wpm = Math.round((correctChars * 60) / (5 * secondsTaken));
+      const wpm = (correctChars * 60) / (5 * secondsTaken);
 
-      const resultObj = {
-        finalInput,
-        correctChars,
-        secondsTaken,
-        totalTyped,
-        mistakes,
-      };
-      console.log("FINAL RESULT:", resultObj);
-
-      let resolvedStudentId = studentId ?? storedStudentId ?? null;
-      let sessionId = null;
-
-      if (typeof window !== "undefined") {
-        if (!resolvedStudentId) {
-          resolvedStudentId = sessionStorage.getItem("studentId");
-        }
-        sessionId = sessionStorage.getItem("sessionId");
+      let resolvedStudentIdLocal = studentId ?? storedStudentId ?? null;
+      if (!resolvedStudentIdLocal && typeof window !== "undefined") {
+        resolvedStudentIdLocal = sessionStorage.getItem("studentId");
       }
 
       await saveResult({
-        studentId: resolvedStudentId,
+        studentId: resolvedStudentIdLocal,
         name: studentName,
         paragraphId: paragraphIdRef.current,
         symbols: correctChars,
@@ -211,65 +211,73 @@ export default function TypingCard({ studentId }) {
         text: finalInput,
       });
     },
-    [saveResult, studentId, storedStudentId, text ,studentName,]
+    [saveResult, studentId, storedStudentId, text, studentName]
   );
 
-  // ---------------- Auto submit -----------------
+  // -------------------------------------------
+  // Auto submit
+  // -------------------------------------------
   const doAutoSubmit = useCallback(async () => {
     if (submittedRef.current) return;
     submittedRef.current = true;
 
-    console.log("AUTO SUBMIT");
-
     clearInterval(intervalRef.current);
     setFinished(true);
     setTypingEnabled(false);
+
+    // ✅ mark backend inactive
+    try {
+      const token = sessionStorage.getItem("token");
+      if (token) await updateTestActive({ token, active: false });
+    } catch {}
 
     await handleSaveResultToDB({
       input: userInputRef.current,
       seconds: secRef.current,
     });
 
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("testActive");
-      sessionStorage.removeItem("studentId");
-      sessionStorage.removeItem("typingState");
+    if (resolvedStudentId && sessionId) {
+      await markSubmitted({ studentId: resolvedStudentId, sessionId });
     }
+
+    sessionStorage.removeItem("testActive");
+    sessionStorage.removeItem("typingState");
 
     await fetch("/api/logout", { method: "POST" });
     router.replace("/test-submitted");
-  }, [handleSaveResultToDB, router]);
+  }, [
+    handleSaveResultToDB,
+    router,
+    resolvedStudentId,
+    sessionId,
+    markSubmitted,
+    updateTestActive,
+  ]);
 
-  // ---------------- Restore logic -----------------
+  // -------------------------------------------
+  // Restore logic
+  // -------------------------------------------
   useEffect(() => {
     if (!paragraph || !paragraph._id || !timeSetting) return;
     if (typeof window === "undefined") return;
 
-    console.log("Paragraph loaded. ID:", paragraph._id);
-
     const cleaned = (paragraph.content || "").replace(/^\s+|\uFEFF/g, "");
-    console.log("CLEANED PARAGRAPH:", cleaned.slice(0, 50));
-
     paragraphIdRef.current = paragraph._id;
     setText(cleaned);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       const saved = sessionStorage.getItem("typingState");
 
+      // ✅ restore from sessionStorage
       if (saved) {
         const s = JSON.parse(saved);
-        console.log("RESTORE FOUND:", s);
 
         if (s.paragraphId === paragraph._id && cleaned.length > 5) {
-          console.log("Restoring input:", s.text);
           setUserInputState(s.text);
           userInputRef.current = s.text;
 
-          console.log("Restoring timer:", s.countDown, s.sec);
           setCountDown(s.countDown ?? timeSetting.duration);
-          secRef.current = s.sec ?? 0;
 
-          console.log("Restore state:", s);
           setStarted(!!s.started);
           setFinished(!!s.finished);
           setCursorIndex(s.cursorIndex ?? 0);
@@ -277,20 +285,19 @@ export default function TypingCard({ studentId }) {
           backspaceCountRef.current = s.backspaces ?? 0;
 
           if (s.started && !s.finished) {
-            console.log("Restarting timer...");
-
             setTypingEnabled(true);
+
+            // ✅ mark backend ACTIVE immediately
+            try {
+              const token = sessionStorage.getItem("token");
+              if (token) await updateTestActive({ token, active: true });
+            } catch {}
 
             clearInterval(intervalRef.current);
             intervalRef.current = setInterval(() => {
               secRef.current++;
 
               setCountDown((prev) => {
-                console.log("Timer tick (restore):", {
-                  sec: secRef.current,
-                  countDown: prev,
-                });
-
                 if (prev <= 1) {
                   clearInterval(intervalRef.current);
                   doAutoSubmit();
@@ -300,7 +307,61 @@ export default function TypingCard({ studentId }) {
               });
             }, 1000);
           }
+          return;
+        }
+      }
 
+      // ✅ restore from convex draft
+      if (!saved && draft && !draft.isSubmitted && !draftRestored) {
+        if (draft.paragraphId === paragraph._id && cleaned.length > 5) {
+          setDraftRestored(true);
+
+          sessionStorage.setItem("testActive", "true");
+          setIsActive(true);
+
+          setUserInputState(draft.typedText || "");
+          userInputRef.current = draft.typedText || "";
+
+          const remainingSeconds =
+            typeof draft.remainingSeconds === "number"
+              ? draft.remainingSeconds
+              : timeSetting.duration;
+
+          setCountDown(remainingSeconds);
+
+          setStarted(!!draft.started);
+          setFinished(false);
+          setTypingEnabled(!!draft.started);
+
+          setCursorIndex((draft.typedText || "").length);
+          setErrorIndex(null);
+
+          // ✅ mark backend ACTIVE immediately
+          try {
+            const token = sessionStorage.getItem("token");
+            if (token) await updateTestActive({ token, active: true });
+          } catch {}
+
+          if (draft.started && remainingSeconds <= 0) {
+            doAutoSubmit();
+            return;
+          }
+
+          if (draft.started && remainingSeconds > 0) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = setInterval(() => {
+              secRef.current++;
+
+              setCountDown((prev) => {
+                if (prev <= 1) {
+                  clearInterval(intervalRef.current);
+                  doAutoSubmit();
+                  return 0;
+                }
+                return prev - 1;
+              });
+            }, 1000);
+          }
           return;
         }
       }
@@ -309,43 +370,63 @@ export default function TypingCard({ studentId }) {
         setCountDown(timeSetting.duration ?? 60);
       }
     }, 30);
-  }, [paragraph, timeSetting, doAutoSubmit, countDown]);
-
-  // ---------------- Save state to sessionStorage -----------------
-  useEffect(() => {
-    if (!paragraphIdRef.current) return;
-    if (typeof window === "undefined") return;
-
-    const data = {
-      text: userInputState,
-      countDown,
-      started,
-      finished,
-      cursorIndex,
-      errorIndex,
-      backspaces: backspaceCountRef.current,
-      sec: secRef.current,
-      paragraphId: paragraphIdRef.current,
-    };
-
-    sessionStorage.setItem("typingState", JSON.stringify(data));
-    console.log("SAVING INPUT STATE:", data);
   }, [
-    userInputState,
+    paragraph,
+    timeSetting,
+    doAutoSubmit,
     countDown,
-    started,
-    finished,
-    cursorIndex,
-    errorIndex,
+    draft,
+    draftRestored,
+    updateTestActive,
   ]);
 
-  // ---------------- Cleanup -----------------
+  // -------------------------------------------
+  // ✅ SAVE DRAFT AUTO (EVERY 2 SECONDS) ✅ FIXED
+  // -------------------------------------------
   useEffect(() => {
-    return () => clearInterval(intervalRef.current);
+    if (!resolvedStudentId || !sessionId) return;
+    if (!paragraphIdRef.current) return;
+    if (!started || finished) return;
+    if (!timeSetting?.duration) return;
+
+    const interval = setInterval(() => {
+      const safeRemainingSeconds =
+        typeof countDown === "number" ? countDown : timeSetting.duration;
+
+      saveDraft({
+        studentId: resolvedStudentId,
+        sessionId,
+        paragraphId: paragraphIdRef.current,
+        typedText: userInputRef.current || "",
+        started: true,
+        duration: timeSetting.duration,
+        remainingSeconds: Math.max(0, safeRemainingSeconds),
+      });
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [
+    resolvedStudentId,
+    sessionId,
+    started,
+    finished,
+    countDown,
+    timeSetting,
+    saveDraft,
+  ]);
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      clearInterval(intervalRef.current);
+      if (draftSaveTimeoutRef.current) clearTimeout(draftSaveTimeoutRef.current);
+    };
   }, []);
 
-  // ---------------- Start timer -----------------
-  const startTimer = useCallback(() => {
+  // -------------------------------------------
+  // Start timer
+  // -------------------------------------------
+  const startTimer = useCallback(async () => {
     if (started) return;
 
     const duration = timeSetting?.duration || 60;
@@ -358,13 +439,34 @@ export default function TypingCard({ studentId }) {
     setTypingEnabled(true);
     submittedRef.current = false;
 
+    // ✅ mark backend ACTIVE
+    try {
+      const token = sessionStorage.getItem("token");
+      if (token) await updateTestActive({ token, active: true });
+    } catch {}
+
+    // save first draft immediately
+    const sessId = sessionStorage.getItem("sessionId");
+    const sid =
+      studentId ?? storedStudentId ?? sessionStorage.getItem("studentId");
+
+    if (sid && sessId && paragraphIdRef.current) {
+      saveDraft({
+        studentId: sid,
+        sessionId: sessId,
+        paragraphId: paragraphIdRef.current,
+        typedText: userInputRef.current || "",
+        started: true,
+        duration,
+        remainingSeconds: duration,
+      });
+    }
+
     clearInterval(intervalRef.current);
     intervalRef.current = setInterval(() => {
       secRef.current++;
 
       setCountDown((prev) => {
-        console.log("Timer tick:", { sec: secRef.current, countDown: prev });
-
         if (prev <= 1) {
           clearInterval(intervalRef.current);
           doAutoSubmit();
@@ -373,9 +475,19 @@ export default function TypingCard({ studentId }) {
         return prev - 1;
       });
     }, 1000);
-  }, [started, timeSetting, doAutoSubmit]);
+  }, [
+    started,
+    timeSetting,
+    doAutoSubmit,
+    saveDraft,
+    studentId,
+    storedStudentId,
+    updateTestActive,
+  ]);
 
-  // ---------------- User input -----------------
+  // -------------------------------------------
+  // ✅ User input strict lock
+  // -------------------------------------------
   const onUserInputChange = (e) => {
     if (!isActive || finished) return;
     if (!typingEnabled) return;
@@ -383,15 +495,15 @@ export default function TypingCard({ studentId }) {
     const value = e.target.value;
     const prevValue = userInputRef.current;
 
-    // Count backspaces
+    // backspaces count
     if (value.length < prevValue.length) {
       backspaceCountRef.current += prevValue.length - value.length;
     }
 
     setCursorIndex(value.length);
-
     if (value.length > text.length) return;
 
+    // strict lock
     if (errorIndex !== null) {
       if (value.length < userInputRef.current.length) {
         userInputRef.current = value;
@@ -416,31 +528,42 @@ export default function TypingCard({ studentId }) {
     setUserInputState(value);
     setErrorIndex(null);
 
-    if (value.length === text.length && !completionTimeRef.current) {
-      completionTimeRef.current = secRef.current;
-    }
+    // debounce save
+    if (draftSaveTimeoutRef.current) clearTimeout(draftSaveTimeoutRef.current);
+
+    draftSaveTimeoutRef.current = setTimeout(() => {
+      if (!resolvedStudentId || !sessionId) return;
+      if (!paragraphIdRef.current) return;
+      if (!started || finished) return;
+
+      const safeRemainingSeconds =
+        typeof countDown === "number"
+          ? countDown
+          : timeSetting?.duration || 60;
+
+      saveDraft({
+        studentId: resolvedStudentId,
+        sessionId,
+        paragraphId: paragraphIdRef.current,
+        typedText: value,
+        started: true,
+        duration: timeSetting?.duration || 60,
+        remainingSeconds: Math.max(0, safeRemainingSeconds),
+      });
+    }, 400);
   };
 
-  // ---------------- Render -----------------
-  // ❗ SSR-safe: no direct sessionStorage here
-  if (!studentId && !storedStudentId) {
-    return <Loader>Loading...</Loader>;
-  }
-
-  if (!paragraph || !timeSetting) {
-    return <Loader>Loading test...</Loader>;
-  }
-
-  if (countDown === null) {
-    return <Loader>Preparing...</Loader>;
-  }
+  // Render
+  if (!studentId && !storedStudentId) return <Loader>Loading...</Loader>;
+  if (!paragraph || !timeSetting) return <Loader>Loading test...</Loader>;
+  if (countDown === null) return <Loader>Preparing...</Loader>;
 
   return (
     <OuterWrapper>
       <TypingCardContainer>
         <Header>
           <Title>Typing Test</Title>
-          <Timer urgent={countDown <= 10}>{countDown}s</Timer>
+          <Timer urgent={countDown <= 10}>{formatTime(countDown)}</Timer>
         </Header>
 
         <TypingPanel>
@@ -470,4 +593,4 @@ export default function TypingCard({ studentId }) {
       </TypingCardContainer>
     </OuterWrapper>
   );
-}  
+}

@@ -2,19 +2,7 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
 
-// hash string using WebCrypto SHA-256
-async function hashString(str) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join(""); // hex string
-}
-
-/* ------------------------------------------
-   CREATE STUDENT (Admin Import CSV)
----------------------------------------------*/
+//create student
 export const createStudent = mutation({
   args: {
     name: v.string(),
@@ -24,7 +12,10 @@ export const createStudent = mutation({
     sessionName: v.string(),
   },
 
-  handler: async (ctx, { name, applicationNumber, dob, sessionId,sessionName }) => {
+  handler: async (
+    ctx,
+    { name, applicationNumber, dob, sessionId, sessionName }
+  ) => {
     if (!name || !applicationNumber || !dob || !sessionId || !sessionName) {
       return { success: false, message: "Missing required fields" };
     }
@@ -33,10 +24,7 @@ export const createStudent = mutation({
     const firstFour = firstName.slice(0, 4);
 
     const [dd, mm, yyyy] = dob.split("-");
-    const ddmmyyyy = `${dd}${mm}${yyyy}`;
-
-    const generatedPassword = `${firstFour}${ddmmyyyy}`;
-    const passwordHash = await hashString(generatedPassword);
+    const generatedPassword = `${firstFour}${yyyy}`;
 
     const existing = await ctx.db
       .query("students")
@@ -49,7 +37,7 @@ export const createStudent = mutation({
       await ctx.db.patch(existing._id, {
         name,
         dob,
-        passwordHash,
+        password: generatedPassword,
         sessionId,
         sessionName,
       });
@@ -61,7 +49,7 @@ export const createStudent = mutation({
       name,
       applicationNumber,
       dob,
-      passwordHash,
+      password: generatedPassword,
       sessionId,
       sessionName,
     });
@@ -70,19 +58,20 @@ export const createStudent = mutation({
   },
 });
 
-
-/* ------------------------------------------
-   VERIFY STUDENT → CREATE SESSION
----------------------------------------------*/
+//verify student - create session
 export const verifyStudent = mutation({
   args: {
     username: v.optional(v.string()),
+    applicationNumber: v.optional(v.string()),
+    studentId: v.optional(v.string()),
     password: v.optional(v.string()),
-    name: v.optional(v.string()), // legacy alias
+    name: v.optional(v.string()),
   },
 
   handler: async (ctx, args) => {
-    const username = args.username ?? args.name;
+    const username =
+      args.username ?? args.applicationNumber ?? args.studentId ?? args.name;
+
     const password = args.password;
 
     if (!username || !password) {
@@ -100,13 +89,60 @@ export const verifyStudent = mutation({
       return { success: false, message: "Invalid credentials" };
     }
 
-    const incomingHash = await hashString(password);
-
-    if (incomingHash !== student.passwordHash) {
+    // ✅ 1. CHECK PASSWORD FIRST
+    if (password !== student.password) {
       return { success: false, message: "Invalid credentials" };
     }
 
-    // ⭐ CREATE SESSION (1 hour expiry)
+    // ✅ 2. BLOCK IF TEST ALREADY SUBMITTED
+    const existingResult = await ctx.db
+      .query("results")
+      .withIndex("by_student", (q) =>
+        q.eq("studentId", student.applicationNumber)
+      )
+      .first();
+
+    if (existingResult) {
+      return {
+        success: false,
+        message: "Test already submitted. Login not allowed.",
+      };
+    }
+
+    //  3. RESUME IF TEST ALREADY STARTED (Kick old device by rotating token)
+    const activeSession = await ctx.db
+      .query("sessions")
+      .withIndex("by_studentId", (q) =>
+        q.eq("studentId", student.applicationNumber)
+      )
+      .first();
+
+    if (activeSession && activeSession.testActive) {
+      //  Safe token generator (works in Convex runtime)
+      const newToken = `${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2)}_${Math.random().toString(36).slice(2)}`;
+
+      const newExpiresAt = Date.now() + 60 * 60 * 1000;
+
+      //  Update token so old device session becomes invalid
+      await ctx.db.patch(activeSession._id, {
+        token: newToken,
+        expiresAt: newExpiresAt,
+      });
+
+      return {
+        success: true,
+        resume: true,
+        message: "Test already started. Resuming on this device.",
+        studentId: student.applicationNumber,
+        token: newToken,
+        expiresAt: newExpiresAt,
+        sessionId: student.sessionId,
+      };
+    }
+
+    //  4. CREATE NEW SESSION (first login)
     const expiresInMs = 60 * 60 * 1000;
 
     const session = await ctx.runMutation(api.sessions.createSession, {
@@ -114,7 +150,6 @@ export const verifyStudent = mutation({
       expiresInMs,
     });
 
-    // defensive: ensure session created
     if (!session || !session.token) {
       return {
         success: false,
@@ -124,9 +159,11 @@ export const verifyStudent = mutation({
 
     return {
       success: true,
+      resume: false,
       studentId: student.applicationNumber,
-      token: session.token,   // <-- returns `token`
+      token: session.token,
       expiresAt: session.expiresAt,
+      sessionId: student.sessionId,
     };
   },
 });

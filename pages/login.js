@@ -33,24 +33,25 @@ export default function LoginPage() {
     async function check() {
       try {
         const res = await fetch("/api/get-session", { credentials: "include" });
-        const { token } = await res.json();
+        const data = await res.json();
 
+        const token = data?.token;
         if (!token) return; // no cookie → allow login
 
         const session = await convex.query(api.sessions.validateSession, {
           token,
         });
 
+        // ❌ invalid cookie → logout and allow login
         if (!session?.valid) {
           await fetch("/api/logout", { method: "POST" });
           return;
         }
 
-        // ⭐ ONLY redirect if testActive = true
+        //  redirect only if testActive is TRUE
         if (session.valid && session.testActive) {
           router.replace("/test");
         }
-
       } catch (err) {
         console.error("Login auto-check failed", err);
       }
@@ -69,47 +70,44 @@ export default function LoginPage() {
     try {
       const result = await verifyStudent({ username, password });
 
-      if (!result.success) {
-        setMessage("Invalid credentials.");
+      if (!result?.success) {
+        setMessage(result?.message || "Invalid credentials");
         return;
       }
 
-      // Delete old sessions
-      await convex.mutation(api.sessions.deleteOldSessions, {
-        studentId: result.studentId,
-      });
+      //  Store in sessionStorage for TypingCard
+      sessionStorage.setItem("studentId", result.studentId);
+      sessionStorage.setItem("sessionId", result.sessionId);
+      sessionStorage.setItem("testActive", "true");
 
-      // Create new session
-      const sessionData = await convex.mutation(api.sessions.createSession, {
-        studentId: result.studentId,
-        expiresInMs: 60 * 60 * 1000,
-      });
+      //  IMPORTANT: store token for updateTestActive mutation
+      sessionStorage.setItem("token", result.token);
 
-      if (!sessionData?.token) {
-        setMessage("Couldn't create session.");
-        return;
+      //  If you have name in result, save it
+      if (result.name) {
+        sessionStorage.setItem("studentName", result.name);
       }
 
-      // Write cookie
+      //  Store backend-created session cookie
       await fetch("/api/set-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          token: sessionData.token,
-          expiresAt: sessionData.expiresAt,
+          token: result.token,
+          expiresAt: result.expiresAt ?? Date.now() + 60 * 60 * 1000,
+          studentId: result.studentId,
+          sessionId: result.sessionId,
         }),
       });
 
       router.replace("/test");
     } catch (err) {
+      console.error(err);
       setMessage("Server error. Try again.");
     }
   };
 
-  /* --------------------------------------------------
-     UI
-  ---------------------------------------------------- */
   return (
     <Container>
       <Card>
@@ -164,11 +162,6 @@ const Card = styled.div`
   text-align: center;
   width: 92%;
   max-width: 420px;
-`;
-
-const Logo = styled.h1`
-  font-size: 1.8rem;
-  font-weight: 700;
 `;
 
 const SubText = styled.p`
