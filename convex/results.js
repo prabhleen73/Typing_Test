@@ -23,7 +23,6 @@ export const hasAttempted = query({
 export const saveResult = mutation({
   args: {
     studentId: v.string(),
-    name: v.optional(v.string()),  
     paragraphId: v.id("paragraphs"),
     symbols: v.number(),
     seconds: v.number(),
@@ -34,9 +33,10 @@ export const saveResult = mutation({
 
   handler: async (ctx, args) => {
     if (!args.studentId || !args.paragraphId) {
-      return { success: false, message: "Missing required fields" };
+      throw new Error("Missing required fields");
     }
-    //check if already attempted
+
+    // prevent duplicate attempt
     const existing = await ctx.db
       .query("results")
       .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
@@ -44,19 +44,19 @@ export const saveResult = mutation({
       .first();
 
     if (existing) {
-      return { success: false, message: "Already attempted" };
+      throw new Error("Already attempted");
     }
 
-    //get paragraph
+    // get paragraph
     const paragraph = await ctx.db.get(args.paragraphId);
     if (!paragraph) {
-      return { success: false, message: "Paragraph not found" };
+      throw new Error("Paragraph not found");
     }
 
     const paragraphContent = paragraph.content ?? "";
     const originalSymbols = paragraphContent.length;
 
-    //  fetch student from db
+    // fetch student
     const student = await ctx.db
       .query("students")
       .withIndex("by_applicationNumber", (q) =>
@@ -65,26 +65,31 @@ export const saveResult = mutation({
       .first();
 
     if (!student) {
-      return { success: false, message: "Student not found" };
+      throw new Error("Student not found");
     }
 
-    
-    await ctx.db.insert("results", {
-      studentId: args.studentId,
-      name: args.name ?? student.name ?? "N/A",
-      sessionId: student.sessionId,   
-      paragraphId: args.paragraphId,
-      symbols: args.symbols,
-      seconds: args.seconds,
-      accuracy: args.accuracy,
-      wpm: args.wpm,
-      text: args.text ?? "",
-      paragraphContent,
-      originalSymbols,
-      submittedAt: new Date().toISOString(),
-    });
+    // calculate key depressions per hour
+    const keyDepressions =
+      args.seconds > 0
+        ? Math.round((args.symbols / args.seconds) * 3600)
+        : 0;
 
-    return { success: true };
+   const resultId = await ctx.db.insert("results", {
+  studentId: args.studentId,     
+  name: student.name || "N/A",
+  sessionId: student.sessionId, 
+  paragraphId: args.paragraphId,
+  symbols: args.symbols,
+  seconds: args.seconds,
+  accuracy: args.accuracy,
+  wpm: args.wpm,
+  text: args.text ?? "",
+  paragraphContent,
+  originalSymbols,
+  submittedAt: new Date().toISOString(),
+});
+
+    return resultId;
   },
 });
 
@@ -99,17 +104,20 @@ export const getAllResults = query({
   },
 });
 
-   // get results be session
+
+/* =========================================================
+   GET RESULTS BY SESSION (ADMIN PAGE)
+========================================================= */
+
 export const getResultsBySession = query({
   args: { sessionId: v.id("testSessions") },
+
   handler: async (ctx, { sessionId }) => {
-    //  get results
     const results = await ctx.db
       .query("results")
       .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
       .collect();
 
-    //  get session name
     const session = await ctx.db.get(sessionId);
 
     return results.map((r) => ({
@@ -117,5 +125,26 @@ export const getResultsBySession = query({
       sessionName: session?.name || "N/A",
       name: r.name || "N/A",
     }));
+  },
+});
+
+
+/* =========================================================
+   ✅ GET SINGLE RESULT BY ID (FOR TEST SUBMITTED PAGE)
+========================================================= */
+
+export const getResultById = query({
+  args: { id: v.id("results") },
+  handler: async (ctx, { id }) => {
+    const result = await ctx.db.get(id);
+    if (!result) return null;
+
+    // get session
+    const session = await ctx.db.get(result.sessionId);
+
+    return {
+      ...result,
+      sessionName: session?.name || "N/A",
+    };
   },
 });

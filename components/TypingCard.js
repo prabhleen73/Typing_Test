@@ -173,46 +173,54 @@ export default function TypingCard({ studentId }) {
   // -------------------------------------------
   // Save result helper
   // -------------------------------------------
-  const handleSaveResultToDB = useCallback(
-    async ({ input, seconds }) => {
-      const finalInput = input ?? userInputRef.current ?? "";
+ const handleSaveResultToDB = useCallback(
+  async ({ input, seconds }) => {
+    const finalInput = input ?? userInputRef.current ?? "";
 
-      let correctChars = 0;
-      for (let i = 0; i < finalInput.length; i++) {
-        if (finalInput[i] === text[i]) correctChars++;
-      }
+    let correctChars = 0;
+    for (let i = 0; i < finalInput.length; i++) {
+      if (finalInput[i] === text[i]) correctChars++;
+    }
 
-      const secondsTaken =
-        completionTimeRef.current ?? seconds ?? Math.max(1, secRef.current);
+    const secondsTaken =
+      completionTimeRef.current ?? seconds ?? Math.max(1, secRef.current);
 
-      const totalTyped = finalInput.length + backspaceCountRef.current;
-      const mistakes = backspaceCountRef.current;
+    const totalTyped = finalInput.length + backspaceCountRef.current;
+    const mistakes = backspaceCountRef.current;
 
-      const accuracy =
-        totalTyped === 0
-          ? 0
-          : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
+    const accuracy =
+      totalTyped === 0
+        ? 0
+        : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
 
-      const wpm = (correctChars * 60) / (5 * secondsTaken);
+    const wpm = (correctChars * 60) / (5 * secondsTaken);
 
-      let resolvedStudentIdLocal = studentId ?? storedStudentId ?? null;
-      if (!resolvedStudentIdLocal && typeof window !== "undefined") {
-        resolvedStudentIdLocal = sessionStorage.getItem("studentId");
-      }
+    let resolvedStudentIdLocal = studentId ?? storedStudentId ?? null;
+    if (!resolvedStudentIdLocal && typeof window !== "undefined") {
+      resolvedStudentIdLocal = sessionStorage.getItem("studentId");
+    }
 
-      await saveResult({
-        studentId: resolvedStudentIdLocal,
-        name: studentName,
-        paragraphId: paragraphIdRef.current,
-        symbols: correctChars,
-        seconds: secondsTaken,
-        accuracy,
-        wpm,
-        text: finalInput,
-      });
-    },
-    [saveResult, studentId, storedStudentId, text, studentName]
-  );
+    //  FIX name safely
+    let finalName = studentName;
+    if (!finalName || finalName.trim() === "") {
+      finalName = sessionStorage.getItem("studentName") || "N/A";
+    }
+
+    //  ONLY ONE resultId declaration
+    const resultId = await saveResult({
+      studentId: resolvedStudentIdLocal,
+      paragraphId: paragraphIdRef.current,
+      symbols: correctChars,
+      seconds: secondsTaken,
+      accuracy,
+      wpm,
+      text: finalInput,
+    });
+
+    return resultId;
+  },
+  [saveResult, studentId, storedStudentId, text, studentName]
+);
 
   // -------------------------------------------
   // Auto submit
@@ -225,16 +233,16 @@ export default function TypingCard({ studentId }) {
     setFinished(true);
     setTypingEnabled(false);
 
-    // ✅ mark backend inactive
+    //  mark backend inactive
     try {
       const token = sessionStorage.getItem("token");
       if (token) await updateTestActive({ token, active: false });
     } catch {}
 
-    await handleSaveResultToDB({
-      input: userInputRef.current,
-      seconds: secRef.current,
-    });
+    const resultId = await handleSaveResultToDB({
+  input: userInputRef.current,
+  seconds: secRef.current,
+});
 
     if (resolvedStudentId && sessionId) {
       await markSubmitted({ studentId: resolvedStudentId, sessionId });
@@ -244,7 +252,7 @@ export default function TypingCard({ studentId }) {
     sessionStorage.removeItem("typingState");
 
     await fetch("/api/logout", { method: "POST" });
-    router.replace("/test-submitted");
+    router.replace(`/test-submitted?resultId=${resultId}`);
   }, [
     handleSaveResultToDB,
     router,
@@ -268,7 +276,7 @@ export default function TypingCard({ studentId }) {
     setTimeout(async () => {
       const saved = sessionStorage.getItem("typingState");
 
-      // ✅ restore from sessionStorage
+      //  restore from sessionStorage
       if (saved) {
         const s = JSON.parse(saved);
 
@@ -287,7 +295,7 @@ export default function TypingCard({ studentId }) {
           if (s.started && !s.finished) {
             setTypingEnabled(true);
 
-            // ✅ mark backend ACTIVE immediately
+            //  mark backend ACTIVE immediately
             try {
               const token = sessionStorage.getItem("token");
               if (token) await updateTestActive({ token, active: true });
@@ -311,7 +319,7 @@ export default function TypingCard({ studentId }) {
         }
       }
 
-      // ✅ restore from convex draft
+      //  restore from convex draft
       if (!saved && draft && !draft.isSubmitted && !draftRestored) {
         if (draft.paragraphId === paragraph._id && cleaned.length > 5) {
           setDraftRestored(true);

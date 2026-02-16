@@ -138,20 +138,37 @@ const generateAllPDFs = () => {
     { align: "center", maxWidth: pageWidth - 30 }
   );
 
+  // ================= SUMMARY TABLE =================
   let y = 40;
   const rowHeight = 8;
-  const col = { sno: 14, name: 30, roll: 90, wpm: 130, kph: 155 };
 
-  doc.setFontSize(11);
+  const col = {
+    sno: 14,
+    candidateId: 25,
+    name: 45,
+    qualifying: 95,
+    result: 135,
+    status: 175,
+  };
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+
   doc.rect(14, y, pageWidth - 28, rowHeight);
+
   doc.text("S.No", col.sno + 2, y + 6);
-  doc.text("Name", col.name + 2, y + 6);
-  doc.text("Roll No", col.roll + 2, y + 6);
-  doc.text("WPM", col.wpm + 6, y + 6);
-  doc.text("Key Depressions / Hour", col.kph + 2, y + 6);
+  doc.text("Candidate ID", col.candidateId + 2, y + 6);
+  doc.text("Candidate Name", col.name + 2, y + 6);
+  doc.text("Qualifying WPM/KDPH", col.qualifying + 2, y + 6);
+  doc.text("Result WPM/KDPH", col.result + 2, y + 6);
+  doc.text("Status", col.status + 2, y + 6);
 
   y += rowHeight;
   doc.setFont("helvetica", "normal");
+
+  // 🔹 Set qualifying criteria here
+  const qualifyingWpm = 30;
+  const qualifyingKph = 9000;
 
   sortedResults.forEach((r, index) => {
     if (y > pageHeight - 15) {
@@ -159,33 +176,33 @@ const generateAllPDFs = () => {
       y = 20;
     }
 
-    const kph = Math.round((r.symbols / r.seconds) * 3600);
+    const kph =
+      r.seconds > 0 ? Math.round((r.symbols / r.seconds) * 3600) : 0;
+
+    const isQualified =
+      r.wpm >= qualifyingWpm && kph >= qualifyingKph;
 
     doc.rect(14, y, pageWidth - 28, rowHeight);
-    doc.line(col.name, y, col.name, y + rowHeight);
-    doc.line(col.roll, y, col.roll, y + rowHeight);
-    doc.line(col.wpm, y, col.wpm, y + rowHeight);
-    doc.line(col.kph, y, col.kph, y + rowHeight);
 
     doc.text(String(index + 1), col.sno + 2, y + 6);
+    doc.text(r.studentId || "N/A", col.candidateId + 2, y + 6);
     doc.text(r.name || "N/A", col.name + 2, y + 6);
-    doc.text(r.studentId || "N/A", col.roll + 2, y + 6);
-    doc.text(String(r.wpm), col.wpm + 6, y + 6);
-    doc.text(String(kph), col.kph + 6, y + 6);
+    doc.text(`${qualifyingWpm}/${qualifyingKph}`, col.qualifying + 2, y + 6);
+    doc.text(`${r.wpm}/${kph}`, col.result + 2, y + 6);
+    doc.text(isQualified ? "Qualified" : "Not Qualified", col.status + 2, y + 6);
 
     y += rowHeight;
   });
 
-  
-    //result
+  // ================= INDIVIDUAL REPORTS =================
+
   sortedResults.forEach((r) => {
-    doc.addPage(); // start new student
+    doc.addPage();
     const startPage = doc.getNumberOfPages();
 
     const sessionLabel = r.sessionName || "N/A";
     const studentName = r.name || "N/A";
 
-    // HEADER
     doc.setFillColor(240, 245, 255);
     doc.rect(0, 0, pageWidth, 30, "F");
 
@@ -204,7 +221,6 @@ const generateAllPDFs = () => {
       align: "right",
     });
 
-    // CONTENT
     doc.setFontSize(15);
     doc.text("Typed Paragraph", 14, 44);
 
@@ -225,8 +241,6 @@ const generateAllPDFs = () => {
     });
 
     const endPage = doc.getNumberOfPages();
-
-    // Reset page numbering per student
     addPerStudentFooter(doc, startPage, endPage);
   });
 
