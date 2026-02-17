@@ -193,8 +193,8 @@ export default function TypingCard({ studentId }) {
         ? 0
         : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
 
-    const wpm = (correctChars * 60) / (5 * secondsTaken);
-
+    const wpm = Math.round((correctChars * 60) / (5 * secondsTaken));
+    
     let resolvedStudentIdLocal = studentId ?? storedStudentId ?? null;
     if (!resolvedStudentIdLocal && typeof window !== "undefined") {
       resolvedStudentIdLocal = sessionStorage.getItem("studentId");

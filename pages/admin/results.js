@@ -23,7 +23,11 @@ const addPerStudentFooter = (doc, startPage, endPage) => {
   }
 };
 
-
+const formatTime = (seconds) => {
+  if (!seconds || seconds <= 0) return "0 min";
+  const mins = Math.ceil(seconds / 60);  // round up
+  return `${mins} min`;
+};
 export default function Results() {
   const sessions = useQuery(api.testSessions.getTestSessions);
   const [selectedSession, setSelectedSession] = useState("");
@@ -41,85 +45,6 @@ export default function Results() {
     setShowModal(true);
   };
 
-  // ✅ SINGLE STUDENT PDF
-//   const generatePDF = (r) => {
-//   const doc = new jsPDF();
-
-//   const pageWidth = doc.internal.pageSize.getWidth();
-//   const pageHeight = doc.internal.pageSize.getHeight();
-
-//   const sessionLabel = r.sessionName || "N/A";
-//   const studentName = r.name || "N/A";
-//   const submittedTime = new Date(r.submittedAt).toLocaleString();
-
-//   // ✅ HEADER
-//   doc.setFillColor(240, 245, 255);
-//   doc.rect(0, 0, pageWidth, 30, "F");
-
-//   doc.setFontSize(15);
-//   doc.text("Typing Test Report", pageWidth / 2, 12, { align: "center" });
-
-//   doc.setFontSize(11);
-//   doc.text(`Student ID: ${r.studentId}`, 14, 20);
-  
-//   const nameText = `Name: ${studentName}`;
-// const wrappedName = doc.splitTextToSize(nameText, 60); // width limit
-
-// doc.text(wrappedName, pageWidth / 2, 20, { align: "center" });
-//   doc.text(`Time: ${r.seconds} sec`, pageWidth - 14, 20, { align: "right" });
-
-//   doc.setFontSize(10);
-//   doc.text(`Session: ${sessionLabel}`, 14, 27);
-//   doc.text(`WPM: ${r.wpm}`, pageWidth / 2, 27, { align: "center" });
-//   doc.text(`Correct Characters: ${r.symbols}`, pageWidth - 14, 27, {
-//     align: "right",
-//   });
-
-//   // ✅ CONTENT
-//   doc.setFontSize(15);
-//   doc.text("Typed Paragraph", 14, 44);
-
-//   doc.setFontSize(12);
-
-// let yPos = 54;
-// const lineHeight = 7;
-
-// const paragraphText = r.text || "No text available";
-
-// const lines = doc.splitTextToSize(paragraphText, 180);
-
-// lines.forEach((line) => {
-//   if (yPos > pageHeight - 20) {
-//     doc.addPage();
-//     yPos = 20;
-//   }
-//   doc.text(line, 14, yPos);
-//   yPos += lineHeight;
-// });
-
-
-//   // ✅ FOOTER WITH PERFECT PAGE FORMAT (1/2, 2/2)
-//   const pageCount = doc.getNumberOfPages();
-
-//   for (let i = 1; i <= pageCount; i++) {
-//     doc.setPage(i);
-//     doc.setFontSize(9);
-//     doc.setTextColor(120, 120, 120);
-
-//     //  Left → Submitted time
-//     doc.text(`Submitted: ${submittedTime}`, 14, pageHeight - 10);
-
-//     //  Right → Page number EXACT format: 1/2
-//     doc.text(`${i}/${pageCount}`, pageWidth - 14, pageHeight - 10, {
-//       align: "right",
-//     });
-//   }
-
-//   // open pdf
-//   const pdfBlob = doc.output("blob");
-//   const pdfUrl = URL.createObjectURL(pdfBlob);
-//   window.open(pdfUrl, "_blank");
-// };
 
 const generatePDF = (r) => {
   generateTypingPDF(r, { showSignature: false });
@@ -150,7 +75,7 @@ const generateAllPDFs = () => {
 
   // ================= SUMMARY TABLE =================
   let y = 40;
-  const rowHeight = 8;
+  const rowHeight = 12;
 
   const col = {
     sno: 14,
@@ -176,7 +101,7 @@ const generateAllPDFs = () => {
   y += rowHeight;
   doc.setFont("helvetica", "normal");
 
-  // 🔹 Set qualifying criteria here
+  //  Set qualifying criteria here
   const qualifyingWpm = 30;
   const qualifyingKph = 9000;
 
@@ -196,7 +121,9 @@ const generateAllPDFs = () => {
 
     doc.text(String(index + 1), col.sno + 2, y + 6);
     doc.text(r.studentId || "N/A", col.candidateId + 2, y + 6);
-    doc.text(r.name || "N/A", col.name + 2, y + 6);
+    
+    const wrappedName = doc.splitTextToSize(r.name || "N/A", 45);
+    doc.text(wrappedName, col.name + 2, y + 6);
     doc.text(`${qualifyingWpm}/${qualifyingKph}`, col.qualifying + 2, y + 6);
     doc.text(`${r.wpm}/${kph}`, col.result + 2, y + 6);
     doc.text(isQualified ? "Qualified" : "Not Qualified", col.status + 2, y + 6);
@@ -285,7 +212,7 @@ const generateAllPDFs = () => {
   const values = [
     r.studentId || "N/A",
     r.name || "N/A",
-    `${r.seconds} sec`,
+    `${formatTime(r.seconds)}`,
     r.sessionName || "N/A",
     r.wpm || "N/A",
     r.postApplied || "N/A",
@@ -301,9 +228,10 @@ const generateAllPDFs = () => {
     doc.text(header, startX + i * colWidth, 24);
   });
 
-  values.forEach((value, i) => {
-    doc.text(String(value), startX + i * colWidth, 32);
-  });
+ values.forEach((value, i) => {
+  const wrapped = doc.splitTextToSize(String(value), colWidth - 4);
+  doc.text(wrapped, startX + i * colWidth, 32);
+});
 
   // ===== CONTENT =====
   doc.setFontSize(14);
@@ -419,7 +347,7 @@ const generateAllPDFs = () => {
                     <td>{r.accuracy}%</td>
                     <td>{r.originalSymbols}</td>
                     <td>{r.symbols}</td>
-                    <td>{r.seconds} sec</td>
+                    <td>{formatTime(r.seconds)}</td>
                     <td>{new Date(r.submittedAt).toLocaleString()}</td>
 
                     <td>
