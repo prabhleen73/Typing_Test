@@ -4,6 +4,8 @@ import { api } from "../convex/_generated/api";
 import { ConvexReactClient } from "convex/react";
 import { useRouter } from "next/router";
 import styled from "styled-components";
+import Image from "next/image";
+
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL);
 
@@ -65,7 +67,7 @@ export default function LoginPage() {
   ---------------------------------------------------- */
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage("Checking credentials...");
+    setMessage("Securely logging you in....");
 
     try {
       const result = await verifyStudent({ username, password });
@@ -111,6 +113,14 @@ export default function LoginPage() {
   return (
     <Container>
       <Card>
+        <LogoWrapper>
+          <Image
+            src="/images/dtulogo.png"
+            alt="DTU Logo"
+            width={70}
+            height={70}
+          />
+      </LogoWrapper>
         <SubText>Login to begin your test</SubText>
 
         <Form onSubmit={handleSubmit}>
@@ -135,8 +145,12 @@ export default function LoginPage() {
 
         <Message isSuccess={message.includes("✓")}>{message}</Message>
       </Card>
+      <Footer>
+        <BoldText>Designed & Developed by Computer Center</BoldText>
+        <div>Delhi Technological University</div>
+      </Footer>
 
-      <Footer>Developed by CC • DTU</Footer>
+
     </Container>
   );
 }
@@ -162,6 +176,9 @@ const Card = styled.div`
   text-align: center;
   width: 92%;
   max-width: 420px;
+`;
+const BoldText = styled.div`
+  font-weight: 700;
 `;
 
 const SubText = styled.p`
@@ -202,5 +219,16 @@ const Message = styled.p`
 
 const Footer = styled.footer`
   margin-top: 20px;
-  color: #aaa;
+  color: #120202ff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+`;
+
+const LogoWrapper = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
 `;

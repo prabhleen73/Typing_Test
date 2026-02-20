@@ -29,6 +29,7 @@ export const saveResult = mutation({
     accuracy: v.number(),
     wpm: v.number(),
     text: v.optional(v.string()),
+    kdph: v.number(), 
   },
 
   handler: async (ctx, args) => {
@@ -83,6 +84,7 @@ export const saveResult = mutation({
   seconds: args.seconds,
   accuracy: args.accuracy,
   wpm: args.wpm,
+  kdph: args.kdph, 
   text: args.text ?? "",
   paragraphContent,
   originalSymbols,

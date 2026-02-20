@@ -40,7 +40,8 @@ export default defineSchema({
     symbols: v.number(),
     seconds: v.number(),
     accuracy: v.number(),
-    wpm: v.number(),
+    wpm: v.number(), 
+    kdph: v.optional(v.number()),
 
     text: v.string(),
     paragraphContent: v.string(),

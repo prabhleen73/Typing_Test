@@ -111,8 +111,7 @@ const generateAllPDFs = () => {
       y = 20;
     }
 
-    const kph =
-      r.seconds > 0 ? Math.round((r.symbols / r.seconds) * 3600) : 0;
+    const kph = r.kdph || 0;
 
     const isQualified =
       r.wpm >= qualifyingWpm && kph >= qualifyingKph;
@@ -201,13 +200,9 @@ const generateAllPDFs = () => {
     "Session",
     "WPM",
     "Post Applied",
-    "Key Depressions",
+    "KDPH",
   ];
 
-  const keyDepressions =
-    r.seconds > 0
-      ? Math.round((r.symbols / r.seconds) * 3600)
-      : 0;
 
   const values = [
     r.studentId || "N/A",
@@ -216,7 +211,7 @@ const generateAllPDFs = () => {
     r.sessionName || "N/A",
     r.wpm || "N/A",
     r.postApplied || "N/A",
-    keyDepressions,
+    r.kdph || 0,,
   ];
 
   doc.setFontSize(9);

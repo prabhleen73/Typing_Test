@@ -25,13 +25,11 @@ export const generateTypingPDF = (result, options = {}) => {
         "Session",
         "WPM",
         "Post Applied",
-        "Key Depressions",
+        "KDPH",
     ];
 
-    const keyDepressions =
-        result.seconds > 0
-            ? Math.round((result.symbols / result.seconds) * 3600)
-            : 0;
+
+    
 
     const formatTime = (seconds) => {
         if (!seconds || seconds <= 0) return "0 min";
@@ -46,7 +44,7 @@ export const generateTypingPDF = (result, options = {}) => {
         result.sessionName || "N/A",
         result.wpm || "N/A",
         result.postApplied || "N/A",
-        keyDepressions,
+        result.kdph,
     ];
 
     doc.setFontSize(9);
