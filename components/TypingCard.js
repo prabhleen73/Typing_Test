@@ -122,9 +122,12 @@ export default function TypingCard({ studentId }) {
 
   const [sessionId, setSessionId] = useState(null);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [testStep, setTestStep] = useState("instructions");
+  const [agreed, setAgreed] = useState(false);
 
   // REFS
   const paragraphIdRef = useRef(null);
+  const textAreaRef = useRef(null);
   const userInputRef = useRef("");
   const secRef = useRef(0);
   const backspaceCountRef = useRef(0);
@@ -140,7 +143,7 @@ export default function TypingCard({ studentId }) {
   const saveDraft = useMutation(api.typingDrafts.saveDraft);
   const markSubmitted = useMutation(api.typingDrafts.markSubmitted);
 
-  // ✅ backend test active flag
+  // backend test active flag
   const updateTestActive = useMutation(api.sessions.updateTestActive);
 
   const resolvedStudentId = studentId ?? storedStudentId ?? null;
@@ -168,6 +171,12 @@ export default function TypingCard({ studentId }) {
 
     const sessId = sessionStorage.getItem("sessionId");
     if (sessId) setSessionId(sessId);
+
+     const accepted = sessionStorage.getItem("instructionsAccepted");
+  if (accepted === "true") {
+    setTestStep("test");
+  }
+
   }, []);
 
   // -------------------------------------------
@@ -253,6 +262,7 @@ export default function TypingCard({ studentId }) {
 
     sessionStorage.removeItem("testActive");
     sessionStorage.removeItem("typingState");
+    sessionStorage.removeItem("instructionsAccepted");
 
     await fetch("/api/logout", { method: "POST" });
     router.replace(`/test-submitted?resultId=${resultId}`);
@@ -347,7 +357,7 @@ export default function TypingCard({ studentId }) {
           setCursorIndex((draft.typedText || "").length);
           setErrorIndex(null);
 
-          // ✅ mark backend ACTIVE immediately
+          //  mark backend ACTIVE immediately
           try {
             const token = sessionStorage.getItem("token");
             if (token) await updateTestActive({ token, active: true });
@@ -392,7 +402,7 @@ export default function TypingCard({ studentId }) {
   ]);
 
   // -------------------------------------------
-  // ✅ SAVE DRAFT AUTO (EVERY 2 SECONDS) ✅ FIXED
+  //  SAVE DRAFT AUTO (EVERY 2 SECONDS)  FIXED
   // -------------------------------------------
   useEffect(() => {
     if (!resolvedStudentId || !sessionId) return;
@@ -449,8 +459,12 @@ export default function TypingCard({ studentId }) {
     setStarted(true);
     setTypingEnabled(true);
     submittedRef.current = false;
+        //  Auto focus typing area
+    setTimeout(() => {
+      textAreaRef.current?.focus();
+    }, 0);
 
-    // ✅ mark backend ACTIVE
+    //mark backend ACTIVE
     try {
       const token = sessionStorage.getItem("token");
       if (token) await updateTestActive({ token, active: true });
@@ -497,7 +511,7 @@ export default function TypingCard({ studentId }) {
   ]);
 
   // -------------------------------------------
-  // ✅ User input strict lock
+  //  User input strict lock
   // -------------------------------------------
   const onUserInputChange = (e) => {
     if (!isActive || finished) return;
@@ -569,6 +583,96 @@ export default function TypingCard({ studentId }) {
   if (!paragraph || !timeSetting) return <Loader>Loading test...</Loader>;
   if (countDown === null) return <Loader>Preparing...</Loader>;
 
+// ✅ Instructions Screen
+if (testStep === "instructions") {
+  return (
+    <OuterWrapper>
+      <TypingCardContainer>
+        <Title>Typing Test Instructions</Title>
+
+        {/* Instructions */}
+        <div style={{ lineHeight: "1.8", fontSize: "16px" }}>
+          <p>• Do not touch mouse once test starts.</p>
+          <p>• Do not refresh the page.</p>
+          <p>• Do not press back button.</p>
+          <p>• Do not switch tabs or minimize the browser.</p>
+          <p>• Copy/Paste is strictly prohibited.</p>
+          <p>• The test will auto-submit when time ends.</p>
+        </div>
+
+        {/*  Information Section MUST BE HERE */}
+        <div
+          style={{
+            marginTop: "25px",
+            padding: "15px",
+            background: "#f0f6ff",
+            borderRadius: "10px",
+            border: "1px solid #c7ddff",
+          }}
+        >
+          <p><strong>Test Information:</strong></p>
+          <p>• Duration: {timeSetting?.duration || 60} seconds</p>
+          <p>• Paragraph will be displayed on screen.</p>
+          <p>• Accuracy, WPM and KDPH will be calculated.</p>
+          <p>• Mistakes must be corrected with backspace to proceed.</p>
+          <p>• Test state is saved every 2 seconds.</p>
+        </div>
+
+        <Centered style={{ marginTop: "25px" }}>
+          <StartButton onClick={() => setTestStep("declaration")}>
+            Continue
+          </StartButton>
+        </Centered>
+      </TypingCardContainer>
+    </OuterWrapper>
+  );
+}
+
+//  Declaration Screen
+if (testStep === "declaration") {
+  return (
+    <OuterWrapper>
+      <TypingCardContainer>
+        <Title>Declaration</Title>
+
+        <p style={{ lineHeight: "1.8", fontSize: "16px" }}>
+          I hereby declare that I will attempt this typing test honestly
+          and will not use any unfair means. I understand that violation
+          of rules may lead to disqualification.
+        </p>
+
+        <div style={{ marginTop: "20px" }}>
+          <label style={{ display: "flex", gap: "10px" }}>
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+            />
+            I Agree
+          </label>
+        </div>
+
+        <Centered style={{ marginTop: "20px" }}>
+          <StartButton
+            disabled={!agreed}
+            style={{
+              opacity: agreed ? 1 : 0.6,
+              cursor: agreed ? "pointer" : "not-allowed",
+            }}
+            onClick={() => {
+              sessionStorage.setItem("instructionsAccepted", "true");
+              setTestStep("test");
+}}
+          >
+            Agree & Continue
+          </StartButton>
+        </Centered>
+      </TypingCardContainer>
+    </OuterWrapper>
+  );
+}
+
+if (testStep === "test") {
   return (
     <OuterWrapper>
       <TypingCardContainer>
@@ -586,6 +690,7 @@ export default function TypingCard({ studentId }) {
           />
 
           <TextArea
+            ref={textAreaRef}   
             value={userInputState}
             onChange={onUserInputChange}
             readOnly={!typingEnabled || finished || !isActive}
@@ -604,4 +709,6 @@ export default function TypingCard({ studentId }) {
       </TypingCardContainer>
     </OuterWrapper>
   );
+}
+return null;
 }
