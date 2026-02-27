@@ -5,78 +5,79 @@ export default function Preview({ text, userInput, errorIndex, cursorIndex }) {
   const scrollRef = useRef(null);
   const cursorRef = useRef(null);
 
-useEffect(() => {
-  const container = scrollRef.current;
-  const cursor = cursorRef.current;
+  useEffect(() => {
+    const container = scrollRef.current;
+    const cursor = cursorRef.current;
 
-  if (!container || !cursor) return;
-  if (userInput.length === 0) return;
+    if (!container || !cursor) return;
+    if (userInput.length === 0) return;
 
-  const style = window.getComputedStyle(container);
-  const lineHeight = parseInt(style.lineHeight);
-  const paddingTop = parseInt(style.paddingTop);
+    const style = window.getComputedStyle(container);
+    const lineHeight = parseInt(style.lineHeight);
+    const paddingTop = parseInt(style.paddingTop);
 
-  const cursorTop = cursor.offsetTop - paddingTop;
-  const scrollTop = container.scrollTop;
-  const containerHeight = container.clientHeight;
+    const cursorTop = cursor.offsetTop - paddingTop;
+    const scrollTop = container.scrollTop;
+    const containerHeight = container.clientHeight;
 
-  const currentLine = Math.floor(cursorTop / lineHeight);
-  const visibleLines = Math.floor(containerHeight / lineHeight);
-  const firstVisibleLine = Math.floor(scrollTop / lineHeight);
-  const lastVisibleLine = firstVisibleLine + visibleLines - 1;
+    const currentLine = Math.floor(cursorTop / lineHeight);
+    const visibleLines = Math.floor(containerHeight / lineHeight);
+    const firstVisibleLine = Math.floor(scrollTop / lineHeight);
+    const lastVisibleLine = firstVisibleLine + visibleLines - 1;
 
-  // Only scroll if cursor goes beyond visible lines
-  if (currentLine > lastVisibleLine) {
-    container.scrollTop = (currentLine - visibleLines + 1) * lineHeight;
-  }
-}, [cursorIndex, userInput]);
+    // Only scroll if cursor goes beyond visible lines
+    if (currentLine > lastVisibleLine) {
+      container.scrollTop = (currentLine - visibleLines + 1) * lineHeight;
+    }
+  }, [cursorIndex, userInput]);
 
   let globalIndex = 0;
 
+  const renderCharacter = (char) => {
+    const index = globalIndex++;
+    const typed = index < userInput.length;
+    const wrong = typed && userInput[index] !== char;
+    const isErrorCursor = index === errorIndex;
+    const isCursor = index === cursorIndex;
+
+    let bg = "transparent";
+    if (isErrorCursor) bg = "rgba(255,0,0,0.45)";
+    else if (wrong) bg = "rgba(255,0,0,0.25)";
+    else if (typed) bg = "rgba(0,180,0,0.20)";
+
+    return (
+      <span
+        key={index}
+        ref={isCursor ? cursorRef : null}
+        style={{
+          background: bg,
+          color: typed ? "#000" : "#555",
+        }}
+      >
+        {char}
+      </span>
+    );
+  };
+
   return (
-    <ParagraphWrapper ref={scrollRef}>
-      {text.split(/(\s+)/).map((segment, segmentIndex) => {
-        // If it's whitespace (space/newline)
-        if (/^\s+$/.test(segment)) {
-          globalIndex += segment.length;
-          return <span key={segmentIndex}>{segment}</span>;
-        }
-
-        // If it's a word
+  <ParagraphWrapper ref={scrollRef}>
+    {text.split(/(\s+)/).map((segment, segmentIndex) => {
+      if (/^\s+$/.test(segment)) {
         return (
-          <Word key={segmentIndex}>
-            {segment.split("").map((char) => {
-              const index = globalIndex++;
-              const typed = index < userInput.length;
-              const wrong = typed && userInput[index] !== char;
-              const isErrorCursor = index === errorIndex;
-              const isCursor = index === cursorIndex;
-
-              let bg = "transparent";
-              if (isErrorCursor) bg = "rgba(255,0,0,0.45)";
-              else if (wrong) bg = "rgba(255,0,0,0.25)";
-              else if (typed) bg = "rgba(0,180,0,0.20)";
-
-              return (
-                <span
-                  key={index}
-                  ref={isCursor ? cursorRef : null}
-                  style={{
-                    background: bg,
-                    padding: 0,
-                    margin: 0,
-                    color: typed ? "#000" : "#555",
-                  }}
-                >
-                  {char}
-                </span>
-              );
-            })}
-          </Word>
+          <span key={segmentIndex}>
+            {segment.split("").map(renderCharacter)}
+          </span>
         );
-      })}
-    </ParagraphWrapper>
-  );
+      }
+
+      return (
+        <Word key={segmentIndex}>
+          {segment.split("").map(renderCharacter)}
+        </Word>
+      );
+    })}
+  </ParagraphWrapper>
+);
 }
 
 /* Wrapper */

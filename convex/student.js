@@ -89,12 +89,15 @@ export const verifyStudent = mutation({
       return { success: false, message: "Invalid credentials" };
     }
 
-    // ✅ 1. CHECK PASSWORD FIRST
-    if (password !== student.password) {
+    //  1. CHECK PASSWORD FIRST (CASE INSENSITIVE)
+    if (
+      password.trim().toLowerCase() !==
+      student.password.trim().toLowerCase()
+    ) {
       return { success: false, message: "Invalid credentials" };
     }
 
-    // ✅ 2. BLOCK IF TEST ALREADY SUBMITTED
+    //  2. BLOCK IF TEST ALREADY SUBMITTED
     const existingResult = await ctx.db
       .query("results")
       .withIndex("by_student", (q) =>

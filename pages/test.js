@@ -19,8 +19,8 @@ export default function TestPage() {
   const validatedRef = useRef(false);
   const testStartedRef = useRef(false);
 
-  const [fsReady, setFsReady] = useState(false);
-  const [showFsWarning, setShowFsWarning] = useState(false);
+ 
+  const [showFsWarning, setShowFsWarning] = useState(false); 
 
   useEffect(() => {
   if (typeof window === "undefined") return;
@@ -155,50 +155,7 @@ export default function TestPage() {
     return () => (mounted = false);
   }, [router]);
 
-  useEffect(() => {
-    if (!fsReady) return;
-
-    const onFsChange = () => {
-      const isFs =
-        document.fullscreenElement ||
-        document.webkitFullscreenElement ||
-        document.mozFullScreenElement;
-
-      if (!isFs) setShowFsWarning(true);
-    };
-    document.addEventListener("fullscreenchange", onFsChange);
-
-    const blockKeys = (e) => {
-      const key = e.key?.toLowerCase?.() || "";
-
-      if (key === "escape") return e.preventDefault();
-      if (/^f\d{1,2}$/.test(key)) return e.preventDefault();
-      if (e.altKey) return e.preventDefault();
-      if (e.metaKey) return e.preventDefault();
-      if (
-        (e.ctrlKey && key === "r") ||
-        (e.ctrlKey && key === "w") ||
-        (e.ctrlKey && key === "p") ||
-        (e.ctrlKey && key === "s") ||
-        (e.ctrlKey && e.shiftKey && key === "i")
-      ) return e.preventDefault();
-    };
-
-    window.addEventListener("keydown", blockKeys);
-    window.oncontextmenu = (e) => e.preventDefault();
-
-    const onVisibility = () => {
-      if (document.hidden) alert("⚠️ You minimized or switched tabs.");
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      document.removeEventListener("fullscreenchange", onFsChange);
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("keydown", blockKeys);
-      window.oncontextmenu = null;
-    };
-  }, [fsReady]);
+ 
 
   useEffect(() => {
   if (!showFsWarning) return;
@@ -241,19 +198,9 @@ export default function TestPage() {
 }, [showFsWarning]);
 
 
-  async function startFullscreen() {
-    try {
-      await document.documentElement.requestFullscreen();
-    } catch {}
-    setFsReady(true);
-  }
+  
 
-  async function resumeFullscreen() {
-    try {
-      await document.documentElement.requestFullscreen();
-    } catch {}
-    setShowFsWarning(false);
-  }
+  
 
   if (loading) return <div>Validating session…</div>;
 
@@ -265,21 +212,7 @@ export default function TestPage() {
         <TypingCard homepageCallback={setCurrentSpeed} studentId={studentId} />
       </MainContent>
 
-      {!fsReady && (
-        <Overlay>
-          <h1>Start Your Typing Test</h1>
-          <p>The test runs in fullscreen mode.</p>
-          <OverlayBtn onClick={startFullscreen}>Start Test</OverlayBtn>
-        </Overlay>
-      )}
-
-      {showFsWarning && (
-        <Overlay>
-          <h1>You left fullscreen</h1>
-          <p>Please return to fullscreen.</p>
-          <OverlayBtn onClick={resumeFullscreen}>Resume</OverlayBtn>
-        </Overlay>
-      )}
+      
     </PageWrapper>
   );
 }

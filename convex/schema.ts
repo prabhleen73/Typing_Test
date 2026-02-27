@@ -69,9 +69,20 @@ export default defineSchema({
 
     duration: v.number(),
 
-    remainingSeconds: v.number(), // ✅ NEW (stores paused timer)
+    remainingSeconds: v.number(), 
 
     isSubmitted: v.boolean(),
     updatedAt: v.number(),
   }).index("by_student_session", ["studentId", "sessionId"]),
+
+  // ================= NEW ADMIN SYSTEM =================
+  admins: defineTable({
+    username: v.string(),
+    password: v.string(), 
+    role: v.union(
+      v.literal("super_admin"),
+      v.literal("admin")
+    ),
+    createdAt: v.number(),
+  }).index("by_username", ["username"]),
 });

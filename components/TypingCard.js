@@ -172,67 +172,67 @@ export default function TypingCard({ studentId }) {
     const sessId = sessionStorage.getItem("sessionId");
     if (sessId) setSessionId(sessId);
 
-     const accepted = sessionStorage.getItem("instructionsAccepted");
-  if (accepted === "true") {
-    setTestStep("test");
-  }
+    const accepted = sessionStorage.getItem("instructionsAccepted");
+    if (accepted === "true") {
+      setTestStep("test");
+    }
 
   }, []);
 
   // -------------------------------------------
   // Save result helper
   // -------------------------------------------
- const handleSaveResultToDB = useCallback(
-  async ({ input, seconds }) => {
-    const finalInput = input ?? userInputRef.current ?? "";
+  const handleSaveResultToDB = useCallback(
+    async ({ input, seconds }) => {
+      const finalInput = input ?? userInputRef.current ?? "";
 
-    let correctChars = 0;
-    for (let i = 0; i < finalInput.length; i++) {
-      if (finalInput[i] === text[i]) correctChars++;
-    }
+      let correctChars = 0;
+      for (let i = 0; i < finalInput.length; i++) {
+        if (finalInput[i] === text[i]) correctChars++;
+      }
 
-    const secondsTaken =
-      completionTimeRef.current ?? seconds ?? Math.max(1, secRef.current);
+      const secondsTaken =
+        completionTimeRef.current ?? seconds ?? Math.max(1, secRef.current);
 
-    const totalTyped = finalInput.length + backspaceCountRef.current;
-    const mistakes = backspaceCountRef.current;
+      const totalTyped = finalInput.length + backspaceCountRef.current;
+      const mistakes = backspaceCountRef.current;
 
-    const accuracy =
-      totalTyped === 0
-        ? 0
-        : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
+      const accuracy =
+        totalTyped === 0
+          ? 0
+          : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
 
-    const wpm = Math.round((correctChars * 60) / (5 * secondsTaken));
+      const wpm = Math.round((correctChars * 60) / (5 * secondsTaken));
 
-    const kdph = Math.round(wpm * 5 * 60);
+      const kdph = Math.round(wpm * 5 * 60);
 
-    let resolvedStudentIdLocal = studentId ?? storedStudentId ?? null;
-    if (!resolvedStudentIdLocal && typeof window !== "undefined") {
-      resolvedStudentIdLocal = sessionStorage.getItem("studentId");
-    }
+      let resolvedStudentIdLocal = studentId ?? storedStudentId ?? null;
+      if (!resolvedStudentIdLocal && typeof window !== "undefined") {
+        resolvedStudentIdLocal = sessionStorage.getItem("studentId");
+      }
 
-    //  FIX name safely
-    let finalName = studentName;
-    if (!finalName || finalName.trim() === "") {
-      finalName = sessionStorage.getItem("studentName") || "N/A";
-    }
+      //  FIX name safely
+      let finalName = studentName;
+      if (!finalName || finalName.trim() === "") {
+        finalName = sessionStorage.getItem("studentName") || "N/A";
+      }
 
-    //  ONLY ONE resultId declaration
-    const resultId = await saveResult({
-      studentId: resolvedStudentIdLocal,
-      paragraphId: paragraphIdRef.current,
-      symbols: correctChars,
-      seconds: secondsTaken,
-      accuracy,
-      wpm,
-      kdph,
-      text: finalInput,
-    });
+      //  ONLY ONE resultId declaration
+      const resultId = await saveResult({
+        studentId: resolvedStudentIdLocal,
+        paragraphId: paragraphIdRef.current,
+        symbols: correctChars,
+        seconds: secondsTaken,
+        accuracy,
+        wpm,
+        kdph,
+        text: finalInput,
+      });
 
-    return resultId;
-  },
-  [saveResult, studentId, storedStudentId, text, studentName]
-);
+      return resultId;
+    },
+    [saveResult, studentId, storedStudentId, text, studentName]
+  );
 
   // -------------------------------------------
   // Auto submit
@@ -249,12 +249,12 @@ export default function TypingCard({ studentId }) {
     try {
       const token = sessionStorage.getItem("token");
       if (token) await updateTestActive({ token, active: false });
-    } catch {}
+    } catch { }
 
     const resultId = await handleSaveResultToDB({
-  input: userInputRef.current,
-  seconds: secRef.current,
-});
+      input: userInputRef.current,
+      seconds: secRef.current,
+    });
 
     if (resolvedStudentId && sessionId) {
       await markSubmitted({ studentId: resolvedStudentId, sessionId });
@@ -312,7 +312,7 @@ export default function TypingCard({ studentId }) {
             try {
               const token = sessionStorage.getItem("token");
               if (token) await updateTestActive({ token, active: true });
-            } catch {}
+            } catch { }
 
             clearInterval(intervalRef.current);
             intervalRef.current = setInterval(() => {
@@ -361,7 +361,7 @@ export default function TypingCard({ studentId }) {
           try {
             const token = sessionStorage.getItem("token");
             if (token) await updateTestActive({ token, active: true });
-          } catch {}
+          } catch { }
 
           if (draft.started && remainingSeconds <= 0) {
             doAutoSubmit();
@@ -459,7 +459,7 @@ export default function TypingCard({ studentId }) {
     setStarted(true);
     setTypingEnabled(true);
     submittedRef.current = false;
-        //  Auto focus typing area
+    //  Auto focus typing area
     setTimeout(() => {
       textAreaRef.current?.focus();
     }, 0);
@@ -468,7 +468,7 @@ export default function TypingCard({ studentId }) {
     try {
       const token = sessionStorage.getItem("token");
       if (token) await updateTestActive({ token, active: true });
-    } catch {}
+    } catch { }
 
     // save first draft immediately
     const sessId = sessionStorage.getItem("sessionId");
@@ -583,132 +583,132 @@ export default function TypingCard({ studentId }) {
   if (!paragraph || !timeSetting) return <Loader>Loading test...</Loader>;
   if (countDown === null) return <Loader>Preparing...</Loader>;
 
-// ✅ Instructions Screen
-if (testStep === "instructions") {
-  return (
-    <OuterWrapper>
-      <TypingCardContainer>
-        <Title>Typing Test Instructions</Title>
+  // ✅ Instructions Screen
+  if (testStep === "instructions") {
+    return (
+      <OuterWrapper>
+        <TypingCardContainer>
+          <Title>Typing Test Instructions</Title>
 
-        {/* Instructions */}
-        <div style={{ lineHeight: "1.8", fontSize: "16px" }}>
-          <p>• Do not touch mouse once test starts.</p>
-          <p>• Do not refresh the page.</p>
-          <p>• Do not press back button.</p>
-          <p>• Do not switch tabs or minimize the browser.</p>
-          <p>• Copy/Paste is strictly prohibited.</p>
-          <p>• The test will auto-submit when time ends.</p>
-        </div>
+          {/* Instructions */}
+          <div style={{ lineHeight: "1.8", fontSize: "16px" }}>
+            <p>• Do not touch mouse once test starts.</p>
+            <p>• Do not refresh the page.</p>
+            <p>• Do not press back button.</p>
+            <p>• Do not switch tabs or minimize the browser.</p>
+            <p>• Copy/Paste is strictly prohibited.</p>
+            <p>• The test will auto-submit when time ends.</p>
+          </div>
 
-        {/*  Information Section MUST BE HERE */}
-        <div
-          style={{
-            marginTop: "25px",
-            padding: "15px",
-            background: "#f0f6ff",
-            borderRadius: "10px",
-            border: "1px solid #c7ddff",
-          }}
-        >
-          <p><strong>Test Information:</strong></p>
-          <p>• Duration: {timeSetting?.duration || 60} seconds</p>
-          <p>• Paragraph will be displayed on screen.</p>
-          <p>• Accuracy, WPM and KDPH will be calculated.</p>
-          <p>• Mistakes must be corrected with backspace to proceed.</p>
-          <p>• Test state is saved every 2 seconds.</p>
-        </div>
-
-        <Centered style={{ marginTop: "25px" }}>
-          <StartButton onClick={() => setTestStep("declaration")}>
-            Continue
-          </StartButton>
-        </Centered>
-      </TypingCardContainer>
-    </OuterWrapper>
-  );
-}
-
-//  Declaration Screen
-if (testStep === "declaration") {
-  return (
-    <OuterWrapper>
-      <TypingCardContainer>
-        <Title>Declaration</Title>
-
-        <p style={{ lineHeight: "1.8", fontSize: "16px" }}>
-          I hereby declare that I will attempt this typing test honestly
-          and will not use any unfair means. I understand that violation
-          of rules may lead to disqualification.
-        </p>
-
-        <div style={{ marginTop: "20px" }}>
-          <label style={{ display: "flex", gap: "10px" }}>
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-            />
-            I Agree
-          </label>
-        </div>
-
-        <Centered style={{ marginTop: "20px" }}>
-          <StartButton
-            disabled={!agreed}
+          {/*  Information Section MUST BE HERE */}
+          <div
             style={{
-              opacity: agreed ? 1 : 0.6,
-              cursor: agreed ? "pointer" : "not-allowed",
+              marginTop: "25px",
+              padding: "15px",
+              background: "#f0f6ff",
+              borderRadius: "10px",
+              border: "1px solid #c7ddff",
             }}
-            onClick={() => {
-              sessionStorage.setItem("instructionsAccepted", "true");
-              setTestStep("test");
-}}
           >
-            Agree & Continue
-          </StartButton>
-        </Centered>
-      </TypingCardContainer>
-    </OuterWrapper>
-  );
-}
+            <p><strong>Test Information:</strong></p>
+            <p>• Duration: {timeSetting?.duration || 60} seconds</p>
+            <p>• Paragraph will be displayed on screen.</p>
+            <p>• Accuracy, WPM and KDPH will be calculated.</p>
+            <p>• Mistakes must be corrected with backspace to proceed.</p>
+            <p>• Test state is saved every 2 seconds.</p>
+          </div>
 
-if (testStep === "test") {
-  return (
-    <OuterWrapper>
-      <TypingCardContainer>
-        <Header>
-          <Title>Typing Test</Title>
-          <Timer urgent={countDown <= 10}>{formatTime(countDown)}</Timer>
-        </Header>
-
-        <TypingPanel>
-          <Preview
-            text={text}
-            userInput={userInputState}
-            errorIndex={errorIndex}
-            cursorIndex={cursorIndex}
-          />
-
-          <TextArea
-            ref={textAreaRef}   
-            value={userInputState}
-            onChange={onUserInputChange}
-            readOnly={!typingEnabled || finished || !isActive}
-            placeholder={"Please click on start button to start the test."}
-            onPaste={(e) => e.preventDefault()}
-            onCopy={(e) => e.preventDefault()}
-            onCut={(e) => e.preventDefault()}
-          />
-        </TypingPanel>
-
-        {!typingEnabled && !finished && (
-          <Centered>
-            <StartButton onClick={startTimer}>Start Test</StartButton>
+          <Centered style={{ marginTop: "25px" }}>
+            <StartButton onClick={() => setTestStep("declaration")}>
+              Continue
+            </StartButton>
           </Centered>
-        )}
-      </TypingCardContainer>
-    </OuterWrapper>
-  );
-}
-return null;
+        </TypingCardContainer>
+      </OuterWrapper>
+    );
+  }
+
+  //  Declaration Screen
+  if (testStep === "declaration") {
+    return (
+      <OuterWrapper>
+        <TypingCardContainer>
+          <Title>Declaration</Title>
+
+          <p style={{ lineHeight: "1.8", fontSize: "16px" }}>
+            I hereby declare that I will attempt this typing test honestly
+            and will not use any unfair means. I understand that violation
+            of rules may lead to disqualification.
+          </p>
+
+          <div style={{ marginTop: "20px" }}>
+            <label style={{ display: "flex", gap: "10px" }}>
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+              />
+              I Agree
+            </label>
+          </div>
+
+          <Centered style={{ marginTop: "20px" }}>
+            <StartButton
+              disabled={!agreed}
+              style={{
+                opacity: agreed ? 1 : 0.6,
+                cursor: agreed ? "pointer" : "not-allowed",
+              }}
+              onClick={() => {
+                sessionStorage.setItem("instructionsAccepted", "true");
+                router.push("/start-test");
+              }}
+            >
+              Agree & Continue
+            </StartButton>
+          </Centered>
+        </TypingCardContainer>
+      </OuterWrapper>
+    );
+  }
+
+  if (testStep === "test") {
+    return (
+      <OuterWrapper>
+        <TypingCardContainer>
+          <Header>
+            <Title>Typing Test</Title>
+            <Timer urgent={countDown <= 10}>{formatTime(countDown)}</Timer>
+          </Header>
+
+          <TypingPanel>
+            <Preview
+              text={text}
+              userInput={userInputState}
+              errorIndex={errorIndex}
+              cursorIndex={cursorIndex}
+            />
+
+            <TextArea
+              ref={textAreaRef}
+              value={userInputState}
+              onChange={onUserInputChange}
+              readOnly={!typingEnabled || finished || !isActive}
+              placeholder={"Please click on start button to start the test."}
+              onPaste={(e) => e.preventDefault()}
+              onCopy={(e) => e.preventDefault()}
+              onCut={(e) => e.preventDefault()}
+            />
+          </TypingPanel>
+
+          {!typingEnabled && !finished && (
+            <Centered>
+              <StartButton onClick={startTimer}>Start Test</StartButton>
+            </Centered>
+          )}
+        </TypingCardContainer>
+      </OuterWrapper>
+    );
+  }
+  return null;
 }
