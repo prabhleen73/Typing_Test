@@ -1,38 +1,44 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import styled from "styled-components";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
 export default function AdminLogin() {
   const router = useRouter();
+  const loginAdmin = useMutation(api.admins.loginAdmin);
 
-  const [mounted, setMounted] = useState(false); // 
+  const [mounted, setMounted] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  //  Run only on client
   useEffect(() => {
     setMounted(true);
   }, []);
 
   if (!mounted) {
-    return null; 
+    return null;
   }
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
+    setError("");
 
-    const ADMIN_USER = process.env.NEXT_PUBLIC_ADMIN_USERNAME || "admin";
-const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
+    try {
+      const result = await loginAdmin({
+        username,
+        password,
+      });
 
-
-    if (username === ADMIN_USER && password === ADMIN_PASS) {
-      sessionStorage.setItem("isAdmin", "true");
-      sessionStorage.setItem("adminUser", username);
+      // Store session
+      sessionStorage.setItem("adminToken", result.token);
+      sessionStorage.setItem("adminUser", result.username);
+      sessionStorage.setItem("adminRole", result.role);
 
       router.replace("/admin");
-    } else {
-      setError("Invalid admin credentials");
+    } catch (err) {
+      setError(err.message || "Invalid admin credentials");
     }
   };
 

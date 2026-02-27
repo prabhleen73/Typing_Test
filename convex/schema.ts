@@ -57,7 +57,7 @@ export default defineSchema({
     duration: v.number(),
   }),
 
-  // ✅ Typing Test Drafts (Pause Timer + Resume across devices)
+  // Typing Test Drafts (Pause Timer + Resume across devices)
   typingTestDrafts: defineTable({
     studentId: v.string(), // applicationNumber
     sessionId: v.id("testSessions"),
@@ -77,12 +77,16 @@ export default defineSchema({
 
   // ================= NEW ADMIN SYSTEM =================
   admins: defineTable({
+    name: v.string(),
+    email: v.string(),
     username: v.string(),
-    password: v.string(), 
+    password: v.string(),
     role: v.union(
       v.literal("super_admin"),
       v.literal("admin")
     ),
     createdAt: v.number(),
-  }).index("by_username", ["username"]),
+  })
+    .index("by_username", ["username"])
+    .index("by_email", ["email"]),
 });

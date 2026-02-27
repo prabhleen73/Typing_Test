@@ -6,28 +6,31 @@ import { useRouter } from "next/router";
 export default function AdminDashboard() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
-  const [mounted, setMounted] = useState(false); // ✅ hydration safety
+  const [mounted, setMounted] = useState(false);
+  const [role, setRole] = useState(null);
 
-  // ✅ Prevent hydration mismatch
+  // Prevent hydration mismatch
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // ✅ ADMIN AUTH GUARD
+  //  ADMIN AUTH GUARD
   useEffect(() => {
     if (!mounted) return;
     if (typeof window === "undefined") return;
 
-    const isAdmin = sessionStorage.getItem("isAdmin");
+    const token = sessionStorage.getItem("adminToken");
+    const userRole = sessionStorage.getItem("adminRole");
 
-    if (isAdmin !== "true") {
-      router.replace("/admin/admin-login"); // ✅ correct path
+    if (!token) {
+      router.replace("/admin/admin-login");
     } else {
+      setRole(userRole);
       setChecking(false);
     }
   }, [router, mounted]);
 
-  // ✅ LOCK BACK BUTTON
+  //  LOCK BACK BUTTON
   useEffect(() => {
     if (!mounted) return;
     if (typeof window === "undefined") return;
@@ -42,7 +45,7 @@ export default function AdminDashboard() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [mounted]);
 
-  // ✅ LOADING SCREEN
+  //  LOADING SCREEN
   if (!mounted || checking) {
     return (
       <div style={{ textAlign: "center", marginTop: "40vh", fontSize: "18px" }}>
@@ -74,10 +77,16 @@ export default function AdminDashboard() {
             <span>📥</span> Import Students
           </MenuItem>
 
-          {/* ✅ ADMIN LOGOUT */}
+          {role === "super_admin" && (
+            <MenuItem href="/admin/create-admin">
+              <span>👤</span> Create New Admin
+            </MenuItem>
+          )}
+
+          {/*  ADMIN LOGOUT */}
           <LogoutButton
             onClick={() => {
-              sessionStorage.removeItem("isAdmin");
+              sessionStorage.clear();
               sessionStorage.removeItem("adminUser");
               router.replace("/admin/admin-login"); // ✅ FIXED PATH
             }}
