@@ -1,3 +1,4 @@
+import { api } from "./_generated/api";
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -11,7 +12,6 @@ export const createAdmin = mutation({
     email: v.string(),
   },
   handler: async (ctx, args) => {
-    // Check if email already exists
     const existing = await ctx.db
       .query("admins")
       .withIndex("by_email", (q) =>
@@ -23,10 +23,7 @@ export const createAdmin = mutation({
       throw new Error("Admin with this email already exists");
     }
 
-    // Generate username from email
-    const username = args.email;
-
-    // Generate random password
+    const username = args.email.split("@")[0];
     const password = Math.random().toString(36).slice(-8);
 
     await ctx.db.insert("admins", {
@@ -38,10 +35,7 @@ export const createAdmin = mutation({
       createdAt: Date.now(),
     });
 
-    return {
-      username,
-      password, // send back so super admin can share
-    };
+    return { username, password };
   },
 });
 
@@ -68,7 +62,7 @@ export const loginAdmin = mutation({
 
     if (admin.password !== args.password) {
       throw new Error("Wrong password");
-    }
+}
 
     return {
       token: "secure-token-" + admin.username,

@@ -79,7 +79,7 @@ export default function AdminDashboard() {
 
           {role === "super_admin" && (
             <MenuItem href="/admin/create-admin">
-              <span>👤</span> Create New Admin
+              <span>👤</span> Enroll Test Admin
             </MenuItem>
           )}
 

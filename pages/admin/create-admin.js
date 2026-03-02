@@ -3,8 +3,10 @@ import { useRouter } from "next/router";
 import styled from "styled-components";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useAction } from "convex/react";
 
 export default function CreateAdmin() {
+  const sendAdminEmail = useAction(api.email.sendAdminEmail);
   const router = useRouter();
   const createAdmin = useMutation(api.admins.createAdmin);
 
@@ -18,6 +20,7 @@ export default function CreateAdmin() {
     setMounted(true);
   }, []);
 
+  // Only allow super admin
   useEffect(() => {
     if (!mounted) return;
 
@@ -42,18 +45,33 @@ export default function CreateAdmin() {
 
     try {
       const result = await createAdmin({
-        name: name.trim(),
-        email: email.trim(),
-      });
+  name: name.trim(),
+  email: email.trim(),
+});
+
+// Call action (no CORS, no fetch)
+await fetch("/api/send-admin-email", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    email: email.trim(),
+    username: result.username,
+    password: result.password,
+  }),
+});
+      
 
       setMessage(
-        `✔ Admin Created Successfully!\n\nUsername: ${result.username}\nPassword: ${result.password}`
+        `✔ Admin Created Successfully!\n\nUsername: ${result.username}\nPassword: ${result.password}\n\nCredentials have been sent to the admin email.`
       );
 
       setName("");
       setEmail("");
     } catch (err) {
-      setMessage(err.message || "Something went wrong");
+      console.error(err);
+      setMessage("Something went wrong. Check logs.");
     }
 
     setLoading(false);
@@ -62,7 +80,7 @@ export default function CreateAdmin() {
   return (
     <PageWrapper>
       <Card>
-        <Title>Create New Admin</Title>
+        <Title>Enroll Test Admin</Title>
 
         <Form onSubmit={handleSubmit}>
           <Input
