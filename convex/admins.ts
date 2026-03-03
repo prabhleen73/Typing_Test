@@ -1,17 +1,32 @@
-import { api } from "./_generated/api";
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-/* =========================
-   SUPER ADMIN CREATES ADMIN
-========================= */
+//superadmin creates admin
 
 export const createAdmin = mutation({
   args: {
     name: v.string(),
     email: v.string(),
+    token: v.string(), // super_admin token required
   },
   handler: async (ctx, args) => {
+
+    // Verify super_admin
+    const session = await ctx.db
+      .query("adminSessions")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+
+    if (!session || session.expiresAt < Date.now()) {
+      throw new Error("Unauthorized");
+    }
+
+    const adminUser = await ctx.db.get(session.adminId);
+
+    if (!adminUser || adminUser.role !== "super_admin") {
+      throw new Error("Only Super Admin can create admins");
+    }
+
     const existing = await ctx.db
       .query("admins")
       .withIndex("by_email", (q) =>
@@ -30,7 +45,7 @@ export const createAdmin = mutation({
       name: args.name,
       email: args.email,
       username,
-      password,
+      password, 
       role: "admin",
       createdAt: Date.now(),
     });
@@ -39,9 +54,7 @@ export const createAdmin = mutation({
   },
 });
 
-/* =========================
-   LOGIN ADMIN
-========================= */
+//Login Admin
 
 export const loginAdmin = mutation({
   args: {
@@ -62,10 +75,20 @@ export const loginAdmin = mutation({
 
     if (admin.password !== args.password) {
       throw new Error("Wrong password");
-}
+    }
+
+    //  Generate secure random token
+    const token = crypto.randomUUID();
+
+    //  Store session in DB
+    await ctx.db.insert("adminSessions", {
+      adminId: admin._id,
+      token,
+      expiresAt: Date.now() + 1000 * 60 * 60 * 4, // 4 hours
+    });
 
     return {
-      token: "secure-token-" + admin.username,
+      token,
       username: admin.username,
       role: admin.role,
     };

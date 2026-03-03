@@ -1,10 +1,9 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-//Character validation
+// Character validation
 const VALID_CHAR_REGEX = /^[\x20-\x7E]+$/;
 
-// Validate text before saving
 function validateParagraphText(text) {
   const invalidChars = [];
   for (const char of text) {
@@ -18,45 +17,186 @@ function validateParagraphText(text) {
   };
 }
 
-  // set paragraph-overwrite old one
-export const setParagraph = mutation({
-  args: { content: v.string() },
+//verify super admin
 
-  handler: async (ctx, { content }) => {
+async function requireSuperAdmin(ctx, token) {
+  const session = await ctx.db
+    .query("adminSessions")
+    .withIndex("by_token", (q) => q.eq("token", token))
+    .unique();
+
+  if (!session || session.expiresAt < Date.now()) {
+    throw new Error("Unauthorized");
+  }
+
+  const admin = await ctx.db.get(session.adminId);
+
+  if (!admin || admin.role !== "super_admin") {
+    throw new Error("Only Super Admin allowed");
+  }
+
+  return admin;
+}
+
+
+export const addParagraph = mutation({
+  args: {
+    content: v.string(),
+    sessionId: v.id("testSessions"),
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+
+    // ===============================
+    // 1️⃣ Validate admin session
+    // ===============================
+    const session = await ctx.db
+      .query("adminSessions")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+
+    if (!session || session.expiresAt < Date.now()) {
+      throw new Error("Unauthorized");
+    }
+
+    const admin = await ctx.db.get(session.adminId);
+
+    if (!admin) {
+      throw new Error("Unauthorized");
+    }
+
+    // ===============================
     // Validate text
-    const result = validateParagraphText(content);
+    // ===============================
+    const result = validateParagraphText(args.content);
     if (!result.valid) {
       throw new Error(
         "Invalid characters found: " + result.invalidChars.join(" ")
       );
     }
 
-    // Check if paragraph exists
-    const existing = await ctx.db.query("paragraphs").first();
+    // ===============================
+    // 3️⃣ Get session name
+    // ===============================
+    const sessionData = await ctx.db.get(args.sessionId);
 
-    if (existing) {
-      // Overwrite existing paragraph
-      await ctx.db.patch(existing._id, {
-        content: content.trim()
-      });
-
-      return existing._id;
+    if (!sessionData) {
+      throw new Error("Session not found");
     }
 
-    // Insert new paragraph 
-    const id = await ctx.db.insert("paragraphs", {
-      content: content.trim()
-    });
+    // ===============================
+    // 4️⃣ Check existing paragraph
+    // ===============================
+    const existing = await ctx.db
+      .query("paragraphs")
+      .withIndex("by_session", (q) =>
+        q.eq("sessionId", args.sessionId)
+      )
+      .unique();
 
-    return id;
+    // ===============================
+    //  SUPER ADMIN
+    // ===============================
+    if (admin.role === "super_admin") {
+
+      if (existing) {
+        await ctx.db.delete(existing._id);
+      }
+
+      return await ctx.db.insert("paragraphs", {
+        content: args.content.trim(),
+        sessionId: args.sessionId,
+        sessionName: sessionData.name,   
+        updatedAt: Date.now(),
+        isLocked: true,
+      });
+    }
+
+    // ===============================
+    //  NORMAL ADMIN
+    // ===============================
+    if (admin.role === "admin") {
+
+      if (existing) {
+        throw new Error(
+          "Paragraph already exists for this session. Contact Super Admin."
+        );
+      }
+
+      return await ctx.db.insert("paragraphs", {
+        content: args.content.trim(),
+        sessionId: args.sessionId,
+        sessionName: sessionData.name,   
+        updatedAt: Date.now(),
+        isLocked: true,
+      });
+    }
+
+    throw new Error("Unauthorized");
   },
 });
 
- 
-   // return the one saved
- 
-export const getParagraph = query({
+//delete paragraph
+export const deleteParagraph = mutation({
+  args: {
+    id: v.id("paragraphs"),
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireSuperAdmin(ctx, args.token);
+
+    await ctx.db.delete(args.id);
+  },
+});
+
+
+//get all paragraphs-admin
+export const getAllParagraphs = query({
   handler: async (ctx) => {
-    return await ctx.db.query("paragraphs").first();
+    return await ctx.db.query("paragraphs").collect();
+  },
+});
+
+//get paragraph (student test)
+
+export const getParagraph = query({
+  args: {
+    sessionId: v.id("testSessions"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("paragraphs")
+      .withIndex("by_session", (q) =>
+        q.eq("sessionId", args.sessionId)
+      )
+      .unique();
+  },
+});
+
+export const updateParagraph = mutation({
+  args: {
+    id: v.id("paragraphs"),
+    content: v.string(),
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireSuperAdmin(ctx, args.token);
+
+    const paragraph = await ctx.db.get(args.id);
+    if (!paragraph) {
+      throw new Error("Paragraph not found");
+    }
+
+    const result = validateParagraphText(args.content);
+    if (!result.valid) {
+      throw new Error(
+        "Invalid characters found: " + result.invalidChars.join(" ")
+      );
+    }
+
+    await ctx.db.patch(args.id, {
+      content: args.content.trim(),
+      updatedAt: Date.now(),
+    });
   },
 });

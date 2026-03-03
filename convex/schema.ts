@@ -7,7 +7,7 @@ export default defineSchema({
     name: v.optional(v.string()),
     applicationNumber: v.string(),
     dob: v.string(),
-    password: v.string(),
+    password: v.string(), 
     sessionId: v.id("testSessions"),
     sessionName: v.string(),
   })
@@ -17,9 +17,9 @@ export default defineSchema({
 
   // Secure backend sessions
   sessions: defineTable({
-    studentId: v.string(), // applicationNumber
-    token: v.string(),     // session token
-    expiresAt: v.number(), // timestamp ms
+    studentId: v.string(),
+    token: v.string(),
+    expiresAt: v.number(),
     testActive: v.boolean(),
   })
     .index("by_token", ["token"])
@@ -28,7 +28,12 @@ export default defineSchema({
   // Paragraphs table
   paragraphs: defineTable({
     content: v.string(),
-  }),
+    sessionId: v.id("testSessions"),
+    sessionName: v.string(),   
+    updatedAt: v.number(),
+    isLocked: v.boolean(),   
+
+  }).index("by_session", ["sessionId"]),
 
   // Results table
   results: defineTable({
@@ -40,7 +45,7 @@ export default defineSchema({
     symbols: v.number(),
     seconds: v.number(),
     accuracy: v.number(),
-    wpm: v.number(), 
+    wpm: v.number(),
     kdph: v.optional(v.number()),
 
     text: v.string(),
@@ -57,25 +62,24 @@ export default defineSchema({
     duration: v.number(),
   }),
 
-  // Typing Test Drafts (Pause Timer + Resume across devices)
-  typingTestDrafts: defineTable({
-    studentId: v.string(), // applicationNumber
-    sessionId: v.id("testSessions"),
 
+  // Drafts
+  typingTestDrafts: defineTable({
+    studentId: v.string(),
+    sessionId: v.id("testSessions"),
     paragraphId: v.id("paragraphs"),
 
     typedText: v.string(),
     started: v.boolean(),
-
     duration: v.number(),
-
-    remainingSeconds: v.number(), 
-
+    remainingSeconds: v.number(),
     isSubmitted: v.boolean(),
     updatedAt: v.number(),
-  }).index("by_student_session", ["studentId", "sessionId"]),
+  })
+    .index("by_student_session", ["studentId", "sessionId"]),
 
-  // ================= NEW ADMIN SYSTEM =================
+
+  // ================= ADMINS =================
   admins: defineTable({
     name: v.string(),
     email: v.string(),
@@ -89,4 +93,14 @@ export default defineSchema({
   })
     .index("by_username", ["username"])
     .index("by_email", ["email"]),
+
+
+  // Admin Sessions
+  adminSessions: defineTable({
+    adminId: v.id("admins"),
+    token: v.string(),
+    expiresAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_adminId", ["adminId"]),
 });

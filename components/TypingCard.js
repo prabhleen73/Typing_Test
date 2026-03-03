@@ -136,7 +136,10 @@ export default function TypingCard({ studentId }) {
   const submittedRef = useRef(false);
   const draftSaveTimeoutRef = useRef(null);
 
-  const paragraph = useQuery(api.paragraphs.getParagraph);
+  const paragraph = useQuery(
+  api.paragraphs.getParagraph,
+  sessionId ? { sessionId } : "skip"
+);
   const timeSetting = useQuery(api.timeSettings.getTimeSetting);
 
   const saveResult = useMutation(api.results.saveResult);
@@ -154,6 +157,11 @@ export default function TypingCard({ studentId }) {
       ? { studentId: resolvedStudentId, sessionId }
       : "skip"
   );
+
+  useEffect(() => {
+  const id = sessionStorage.getItem("sessionId");
+  setSessionId(id);
+}, []);
 
   // -------------------------------------------
   // Load sessionStorage values

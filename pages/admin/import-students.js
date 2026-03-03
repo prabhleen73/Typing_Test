@@ -22,81 +22,76 @@ export default function ImportStudents() {
   };
 
   const handleUpload = () => {
-    if (!file) {
-      setMessage("⚠ Please select a CSV file first.");
-      return;
-    }
+  // Clear previous message immediately
+  setMessage("");
 
-    if (!selectedSession) {
-      setMessage("⚠ Please select a session before uploading.");
-      return;
-    }
+  if (!file) {
+    setMessage("⚠ Please select a CSV file first.");
+    return;
+  }
 
-    const sessionObj = sessions?.find((s) => s._id === selectedSession);
+  if (!selectedSession) {
+    setMessage("⚠ Please select a session before uploading.");
+    return;
+  }
 
-    setLoading(true);
-    setMessage("⏳ Reading CSV...");
+  const sessionObj = sessions?.find((s) => s._id === selectedSession);
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async ({ data }) => {
-        let success = 0;
-        let fail = 0;
+  setLoading(true);
+  setMessage("⏳ Reading CSV...");
 
-        for (const row of data) {
-          console.log("Row data:", row);  // Debugging line to check each row
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
 
-          try {
-            const name = row.name?.trim();
-            const applicationNumber = row.applicationNumber?.trim();
-            const dateOfBirth = row.dateOfBirth?.trim(); // Use 'dateOfBirth' instead of 'dob'
+    complete: async ({ data }) => {
+      let success = 0;
+      let fail = 0;
 
-            // Log the parsed data to check
-            console.log("Parsed fields:", { name, applicationNumber, dateOfBirth });
+      for (const row of data) {
+        try {
+          const name = row.name?.trim();
+          const applicationNumber = row.applicationNumber?.trim();
+          const dateOfBirth = row.dateOfBirth?.trim();
 
-            // Check for missing fields
-            if (!name || !applicationNumber || !dateOfBirth) {
-              console.log("Skipping row due to missing data:", { name, applicationNumber, dateOfBirth });
-              fail++;
-              continue;
-            }
+          // Skip invalid rows
+          if (!name || !applicationNumber || !dateOfBirth) {
+            fail++;
+            continue;
+          }
 
-            // Create student record
-            const res = await createStudent({
-              name,
-              applicationNumber,
-              dob: dateOfBirth, // Send 'dateOfBirth' as 'dob' in the mutation
-              sessionId: selectedSession,
-              sessionName: sessionObj?.name ?? "",
-            });
+          const res = await createStudent({
+            name,
+            applicationNumber,
+            dob: dateOfBirth,
+            sessionId: selectedSession,
+            sessionName: sessionObj?.name ?? "",
+          });
 
-            if (res.success) {
-              success++;
-            } else {
-              console.log("Error in creating student:", res); // Log error response from mutation
-              fail++;
-            }
-
-          } catch (err) {
-            console.error("Error in row processing:", err); // Log any error during row processing
+          if (res?.success) {
+            success++;
+          } else {
             fail++;
           }
+
+        } catch (err) {
+          console.error("Row error:", err);
+          fail++;
         }
-
-        // Display success/failure message
-        setMessage(`✔ Upload complete — ${success} added, ${fail} skipped`);
-        setLoading(false);
-      },
-
-      // Handle CSV parsing error
-      error: (error) => {
-        console.error("Error parsing CSV:", error.message);
-        setMessage("⚠ Error parsing CSV file.");
-        setLoading(false);
       }
-    });
-  };
+
+      // Final message replaces all previous ones
+      setMessage(`✔ Upload complete — ${success} added, ${fail} skipped`);
+      setLoading(false);
+    },
+
+    error: (error) => {
+      console.error("CSV parse error:", error.message);
+      setMessage("⚠ Error parsing CSV file.");
+      setLoading(false);
+    }
+  });
+};
 
   return (
     <Wrapper>

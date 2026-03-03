@@ -109,11 +109,6 @@ export default function TestPage() {
       });
       if (!exists) return router.replace("/login");
 
-      const paragraph = await convex.query(api.paragraphs.getParagraph);
-      if (!paragraph?._id) {
-        alert("No test available.");
-        return;
-      }
 
       const attempted = await convex.query(api.results.hasAttempted, {
         studentId: sid,

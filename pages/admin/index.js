@@ -60,13 +60,15 @@ export default function AdminDashboard() {
         <Title>Admin Dashboard</Title>
         <Subtitle>Manage typing tests, sessions, results, and students</Subtitle>
 
-        <Menu>
-          <MenuItem href="/upload-text">
-            <span>📤</span> Upload Paragraph File
-          </MenuItem>
+        
 
           <MenuItem href="/admin/sessions">
             <span>🗂️</span> Manage Sessions
+          </MenuItem>
+
+          <Menu>
+          <MenuItem href="/admin/paragraph">
+            <span>📤</span> Upload Paragraph File
           </MenuItem>
 
           <MenuItem href="/admin/results">
