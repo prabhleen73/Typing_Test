@@ -1,17 +1,18 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
+import bcrypt from "bcryptjs";
 
-//superadmin creates admin
+// SUPER ADMIN CREATES ADMIN
 
 export const createAdmin = mutation({
   args: {
     name: v.string(),
     email: v.string(),
-    token: v.string(), // super_admin token required
+    token: v.string(),
   },
   handler: async (ctx, args) => {
 
-    // Verify super_admin
+    // Verify super_admin session
     const session = await ctx.db
       .query("adminSessions")
       .withIndex("by_token", (q) => q.eq("token", args.token))
@@ -27,34 +28,44 @@ export const createAdmin = mutation({
       throw new Error("Only Super Admin can create admins");
     }
 
+    // Check existing admin
     const existing = await ctx.db
       .query("admins")
-      .withIndex("by_email", (q) =>
-        q.eq("email", args.email)
-      )
+      .withIndex("by_email", (q) => q.eq("email", args.email))
       .unique();
 
     if (existing) {
-      throw new Error("Admin with this email already exists");
+      return {
+        success: false,
+        message: "Admin with this email already exists.",
+      };
     }
 
     const username = args.email.split("@")[0];
     const password = Math.random().toString(36).slice(-8);
 
+    // HASH PASSWORD (SYNC version allowed in Convex)
+    const hashedPassword = bcrypt.hashSync(password, 10);
+
     await ctx.db.insert("admins", {
       name: args.name,
       email: args.email,
       username,
-      password, 
+      password: hashedPassword,
       role: "admin",
       createdAt: Date.now(),
     });
 
-    return { username, password };
+    return {
+      success: true,
+      username,
+      password, // send plain password only for email
+    };
   },
 });
 
-//Login Admin
+
+// LOGIN ADMIN
 
 export const loginAdmin = mutation({
   args: {
@@ -62,25 +73,42 @@ export const loginAdmin = mutation({
     password: v.string(),
   },
   handler: async (ctx, args) => {
+
     const admin = await ctx.db
       .query("admins")
-      .withIndex("by_username", (q) =>
-        q.eq("username", args.username)
-      )
+      .withIndex("by_username", (q) => q.eq("username", args.username))
       .unique();
 
     if (!admin) {
-      throw new Error("User not found");
+      return {
+        success: false,
+        message: "User not found",
+      };
     }
 
-    if (admin.password !== args.password) {
-      throw new Error("Wrong password");
+    let validPassword = false;
+
+    if (admin.role === "super_admin") {
+      // super_admin password stored as plain text
+      validPassword = admin.password === args.password;
+    } else {
+      // admin password hashed
+      validPassword = bcrypt.compareSync(
+        args.password,
+        admin.password
+      );
     }
 
-    //  Generate secure random token
+    if (!validPassword) {
+      return {
+        success: false,
+        message: "Wrong password",
+      };
+    }
+
+    // Generate session token
     const token = crypto.randomUUID();
 
-    //  Store session in DB
     await ctx.db.insert("adminSessions", {
       adminId: admin._id,
       token,
@@ -88,9 +116,11 @@ export const loginAdmin = mutation({
     });
 
     return {
+      success: true,
       token,
       username: admin.username,
       role: admin.role,
+      email: admin.email,
     };
   },
 });

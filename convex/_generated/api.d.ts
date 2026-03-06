@@ -12,6 +12,7 @@ import type * as admins from "../admins.js";
 import type * as paragraphs from "../paragraphs.js";
 import type * as results from "../results.js";
 import type * as sessions from "../sessions.js";
+import type * as settings from "../settings.js";
 import type * as student from "../student.js";
 import type * as testSessions from "../testSessions.js";
 import type * as timeSettings from "../timeSettings.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   paragraphs: typeof paragraphs;
   results: typeof results;
   sessions: typeof sessions;
+  settings: typeof settings;
   student: typeof student;
   testSessions: typeof testSessions;
   timeSettings: typeof timeSettings;

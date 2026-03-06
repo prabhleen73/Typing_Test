@@ -14,38 +14,24 @@ export default function AdminDashboard() {
     setMounted(true);
   }, []);
 
-  //  ADMIN AUTH GUARD
+  // ADMIN AUTH GUARD
   useEffect(() => {
     if (!mounted) return;
-    if (typeof window === "undefined") return;
 
     const token = sessionStorage.getItem("adminToken");
     const userRole = sessionStorage.getItem("adminRole");
 
     if (!token) {
       router.replace("/admin/admin-login");
-    } else {
-      setRole(userRole);
-      setChecking(false);
+      return;
     }
-  }, [router, mounted]);
 
-  //  LOCK BACK BUTTON
-  useEffect(() => {
-    if (!mounted) return;
-    if (typeof window === "undefined") return;
+    setRole(userRole);
+    setChecking(false);
 
-    window.history.pushState(null, "", window.location.href);
+  }, [mounted, router]);
 
-    const handlePopState = () => {
-      window.history.pushState(null, "", window.location.href);
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [mounted]);
-
-  //  LOADING SCREEN
+  // LOADING SCREEN
   if (!mounted || checking) {
     return (
       <div style={{ textAlign: "center", marginTop: "40vh", fontSize: "18px" }}>
@@ -54,29 +40,43 @@ export default function AdminDashboard() {
     );
   }
 
+  const handleLogout = () => {
+    sessionStorage.clear();
+    router.replace("/admin/admin-login");
+  };
+
   return (
     <PageWrapper>
       <Card>
-        <Title>Admin Dashboard</Title>
-        <Subtitle>Manage typing tests, sessions, results, and students</Subtitle>
+        <Title>
+          {role === "super_admin"
+            ? "Admin Dashboard"
+            : "Test Admin Dashboard"}
+        </Title>
 
-        
+        <Subtitle>
+          Manage typing tests, sessions, results, and students
+        </Subtitle>
 
+        <Menu>
           <MenuItem href="/admin/sessions">
-            <span>🗂️</span> Manage Sessions
+            <span>🗂️</span> Step 1 : Manage Sessions
           </MenuItem>
 
-          <Menu>
           <MenuItem href="/admin/paragraph">
-            <span>📤</span> Upload Paragraph File
+            <span>📤</span> Step 2 : Upload Paragraph File
           </MenuItem>
 
-          <MenuItem href="/admin/results">
-            <span>📊</span> View Test Results
+          <MenuItem href="/admin/test-settings">
+            <span>⚙️</span> Step 3 : Test Settings
           </MenuItem>
 
           <MenuItem href="/admin/import-students">
-            <span>📥</span> Import Students
+            <span>📥</span> Step 4 : Import Students
+          </MenuItem>
+
+          <MenuItem href="/admin/results">
+            <span>📊</span> Step 5 : View Test Results
           </MenuItem>
 
           {role === "super_admin" && (
@@ -85,14 +85,7 @@ export default function AdminDashboard() {
             </MenuItem>
           )}
 
-          {/*  ADMIN LOGOUT */}
-          <LogoutButton
-            onClick={() => {
-              sessionStorage.clear();
-              sessionStorage.removeItem("adminUser");
-              router.replace("/admin/admin-login"); // ✅ FIXED PATH
-            }}
-          >
+          <LogoutButton onClick={handleLogout}>
             🚪 Logout Admin
           </LogoutButton>
         </Menu>
@@ -101,9 +94,7 @@ export default function AdminDashboard() {
   );
 }
 
-/* -----------------------------
-     STYLED COMPONENTS
------------------------------- */
+/* ----------------------------- STYLES ----------------------------- */
 
 const PageWrapper = styled.div`
   min-height: 100vh;
@@ -123,18 +114,6 @@ const Card = styled.div`
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
-  animation: fadeIn 0.4s ease;
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(15px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
 `;
 
 const Title = styled.h1`
@@ -182,7 +161,7 @@ const MenuItem = styled(Link)`
 `;
 
 const LogoutButton = styled.button`
-  background: #564dffff;
+  background: #564dff;
   padding: 18px;
   border-radius: 12px;
   font-size: 18px;
@@ -190,8 +169,4 @@ const LogoutButton = styled.button`
   color: white;
   cursor: pointer;
   margin-top: 20px;
-
-  &:hover {
-    background: #564dffff;
-  }
 `;

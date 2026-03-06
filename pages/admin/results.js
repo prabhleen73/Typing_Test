@@ -103,7 +103,7 @@ const generateAllPDFs = () => {
 
   //  Set qualifying criteria here
   const qualifyingWpm = 30;
-  const qualifyingKph = 9000;
+  const qualifyingKdph = 9000;
 
   sortedResults.forEach((r, index) => {
     if (y > pageHeight - 15) {
@@ -111,10 +111,8 @@ const generateAllPDFs = () => {
       y = 20;
     }
 
-    const kph = r.kdph || 0;
-
     const isQualified =
-      r.wpm >= qualifyingWpm && kph >= qualifyingKph;
+      r.wpm >= qualifyingWpm && r.kdph >= qualifyingKdph;
 
     doc.rect(14, y, pageWidth - 28, rowHeight);
 
@@ -123,8 +121,7 @@ const generateAllPDFs = () => {
     
     const wrappedName = doc.splitTextToSize(r.name || "N/A", 45);
     doc.text(wrappedName, col.name + 2, y + 6);
-    doc.text(`${qualifyingWpm}/${qualifyingKph}`, col.qualifying + 2, y + 6);
-    doc.text(`${r.wpm}/${kph}`, col.result + 2, y + 6);
+    doc.text(`${qualifyingWpm}/${qualifyingKdph}`, col.qualifying + 2, y + 6);
     doc.text(isQualified ? "Qualified" : "Not Qualified", col.status + 2, y + 6);
 
     y += rowHeight;

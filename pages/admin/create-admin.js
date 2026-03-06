@@ -3,10 +3,9 @@ import { useRouter } from "next/router";
 import styled from "styled-components";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { useAction } from "convex/react";
 
 export default function CreateAdmin() {
-  const sendAdminEmail = useAction(api.email.sendAdminEmail);
+  
   const router = useRouter();
   const createAdmin = useMutation(api.admins.createAdmin);
 
@@ -44,10 +43,18 @@ export default function CreateAdmin() {
     setMessage("");
 
     try {
+      const token = sessionStorage.getItem("adminToken");
       const result = await createAdmin({
   name: name.trim(),
   email: email.trim(),
+  token,
 });
+
+if (!result.success) {
+  setMessage(result.message);
+  setLoading(false);
+  return;
+}
 
 // Call action (no CORS, no fetch)
 await fetch("/api/send-admin-email", {
@@ -64,8 +71,8 @@ await fetch("/api/send-admin-email", {
       
 
       setMessage(
-        `✔ Admin Created Successfully!\n\nUsername: ${result.username}\nPassword: ${result.password}\n\nCredentials have been sent to the admin email.`
-      );
+  "✔ Admin created successfully. Login credentials have been sent to the admin email."
+);
 
       setName("");
       setEmail("");

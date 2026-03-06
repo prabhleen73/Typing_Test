@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -8,11 +8,13 @@ export default function ParagraphsPage() {
   const [adminRole, setAdminRole] = useState(null);
   const [adminToken, setAdminToken] = useState(null);
   const [mounted, setMounted] = useState(false);
+  const [fileStatus, setFileStatus] = useState("No file selected");
+
+  const fileInputRef = useRef(null);
 
   const sessions = useQuery(api.testSessions.getTestSessions);
   const [selectedSession, setSelectedSession] = useState("");
 
-  //  Get paragraph for selected session
   const paragraph = useQuery(
     api.paragraphs.getParagraph,
     selectedSession ? { sessionId: selectedSession } : "skip"
@@ -36,7 +38,10 @@ export default function ParagraphsPage() {
   // Upload File
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file) {
+      setFileStatus("No file selected");
+      return;
+    }
 
     setError("");
 
@@ -48,16 +53,15 @@ export default function ParagraphsPage() {
 
       if (!result.valid) {
         setError(
-          "Invalid characters found: " +
-            result.invalidChars.join(" ")
+          "Invalid characters found: " + result.invalidChars.join(" ")
         );
         setFileText("");
-        e.target.value = null;
+        setFileStatus("Invalid characters detected");
         return;
       }
 
       setFileText(text);
-      e.target.value = null;
+      setFileStatus(`${file.name} — No error found. Ready to upload`);
     };
 
     reader.readAsText(file);
@@ -88,6 +92,7 @@ export default function ParagraphsPage() {
       });
 
       setFileText("");
+      setFileStatus("No file selected");
       setError("");
       alert("Paragraph saved successfully.");
     } catch (err) {
@@ -122,12 +127,19 @@ export default function ParagraphsPage() {
           <input
             type="file"
             accept=".txt"
+            ref={fileInputRef}
             onChange={handleFileUpload}
+            style={{ display: "none" }}
           />
+
+          <UploadBtn onClick={() => fileInputRef.current.click()}>
+            Select Paragraph File
+          </UploadBtn>
+
+          <FileStatus>{fileStatus}</FileStatus>
 
           {error && <Error>{error}</Error>}
 
-          {/* SUPER ADMIN — always allowed */}
           {adminRole === "super_admin" && (
             <SaveBtn
               onClick={handleSave}
@@ -137,7 +149,6 @@ export default function ParagraphsPage() {
             </SaveBtn>
           )}
 
-          {/* NORMAL ADMIN */}
           {adminRole === "admin" &&
             (paragraph ? (
               <LockedText>
@@ -153,7 +164,6 @@ export default function ParagraphsPage() {
               </SaveBtn>
             ))}
 
-          {/* OTHER ROLES */}
           {adminRole !== "super_admin" &&
             adminRole !== "admin" && (
               <LockedText>
@@ -204,11 +214,32 @@ const LockedText = styled.p`
 `;
 
 const SaveBtn = styled.button`
-  padding: 12px 18px;
+  padding: 6px 12px;
+  font-size: 13px;
   background: ${({ disabled }) =>
     disabled ? "#9bbcec" : "#007bff"};
   color: white;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: ${({ disabled }) =>
     disabled ? "not-allowed" : "pointer"};
+  width: fit-content;
+`;
+const UploadBtn = styled.button`
+  padding: 6px 12px;
+  font-size: 13px;
+  background: #444;
+  color: white;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  width: fit-content;
+
+  &:hover {
+    background: #333;
+  }
+`;
+
+const FileStatus = styled.div`
+  font-size: 14px;
+  color: #444;
 `;

@@ -15,6 +15,12 @@ export default defineSchema({
     .index("by_name", ["name"])
     .index("by_sessionId", ["sessionId"]),
 
+      // Test Sessions
+    testSessions: defineTable({
+  name: v.string(),
+  createdAt: v.number(),
+}),
+
   // Secure backend sessions
   sessions: defineTable({
     studentId: v.string(),
@@ -58,10 +64,19 @@ export default defineSchema({
     .index("by_session", ["sessionId"]),
 
   // Time Settings
-  timeSettings: defineTable({
-    duration: v.number(),
-  }),
+timeSettings: defineTable({
+  duration: v.number(),
+}),
 
+
+// Test Qualification Settings
+testSettings: defineTable({
+  sessionId: v.id("testSessions"),
+  sessionName: v.string(),
+  qualifyingWpm: v.number(),
+  qualifyingKdph: v.number(),
+  updatedAt: v.number(),
+}).index("by_session", ["sessionId"]),
 
   // Drafts
   typingTestDrafts: defineTable({

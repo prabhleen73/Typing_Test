@@ -17,30 +17,45 @@ export default function AdminLogin() {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
-    return null;
-  }
+  if (!mounted) return null;
 
   const handleLogin = async (e) => {
-    e.preventDefault();
-    setError("");
+e.preventDefault();
+setError("");
 
-    try {
-      const result = await loginAdmin({
-        username,
-        password,
-      });
+try {
+const result = await loginAdmin({
+username,
+password,
+});
 
-      // Store session
-      sessionStorage.setItem("adminToken", result.token);
-      sessionStorage.setItem("adminUser", result.username);
-      sessionStorage.setItem("adminRole", result.role);
 
-      router.replace("/admin");
-    } catch (err) {
-      setError(err.message || "Invalid admin credentials");
-    }
-  };
+console.log("LOGIN RESULT:", result);
+
+// If login failed
+if (!result.success) {
+  setError(result.message);
+  return;
+}
+
+// Store admin session
+sessionStorage.setItem("adminToken", result.token);
+sessionStorage.setItem("adminUser", result.username);
+sessionStorage.setItem("adminRole", result.role);
+sessionStorage.setItem("adminEmail", result.email);
+
+// Redirect to admin dashboard
+router.replace("/admin");
+
+
+} catch (err) {
+console.error(err);
+setError("Login failed. Please try again.");
+}
+};
+
+
+
 
   return (
     <Wrapper>
@@ -52,6 +67,7 @@ export default function AdminLogin() {
             placeholder="Admin Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            required
           />
 
           <Input
@@ -59,6 +75,7 @@ export default function AdminLogin() {
             placeholder="Admin Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            required
           />
 
           <Button type="submit">Login</Button>
