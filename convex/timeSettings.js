@@ -1,5 +1,4 @@
-import { query } from "./_generated/server";
-import { mutation } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 export const getTimeSetting = query({
@@ -7,15 +6,12 @@ export const getTimeSetting = query({
   handler: async (ctx) => {
     const setting = await ctx.db.query("timeSettings").first();
 
+    // default = 60 seconds
     if (!setting) {
-      return { duration: 1 }; // default 1 minute
+      return { duration: 60 };
     }
 
-    // convert seconds → minutes for UI
-    return {
-      ...setting,
-      duration: setting.duration / 60,
-    };
+    return setting; // return seconds
   },
 });
 

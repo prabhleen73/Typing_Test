@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 
 export const generateTypingPDF = (result, options = {}) => {
-    const { showSignature = false } = options;
+    const { showSignature = false, postName = null } = options;
 
     if (!result) return;
 
@@ -28,12 +28,9 @@ export const generateTypingPDF = (result, options = {}) => {
         "KDPH",
     ];
 
-
-    
-
     const formatTime = (seconds) => {
         if (!seconds || seconds <= 0) return "0 min";
-        const mins = Math.ceil(seconds / 60);  // round up
+        const mins = Math.ceil(seconds / 60);
         return `${mins} min`;
     };
 
@@ -43,8 +40,8 @@ export const generateTypingPDF = (result, options = {}) => {
         `${formatTime(result.seconds)}`,
         result.sessionName || "N/A",
         result.wpm || "N/A",
-        result.postApplied || "N/A",
-        result.kdph,
+        result.postApplied || postName || "N/A",
+        result.kdph || 0,
     ];
 
     doc.setFontSize(9);
@@ -57,7 +54,8 @@ export const generateTypingPDF = (result, options = {}) => {
     });
 
     values.forEach((value, i) => {
-        doc.text(String(value), startX + i * colWidth, 32);
+        const wrapped = doc.splitTextToSize(String(value), colWidth - 4);
+        doc.text(wrapped, startX + i * colWidth, 31);
     });
 
     // ================= CONTENT =================

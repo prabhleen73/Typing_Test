@@ -71,6 +71,8 @@ timeSettings: defineTable({
 
 // Test Qualification Settings
 testSettings: defineTable({
+  postName:v.string(),
+  examDate:v.number(),
   sessionId: v.id("testSessions"),
   sessionName: v.string(),
   qualifyingWpm: v.number(),

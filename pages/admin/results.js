@@ -37,6 +37,11 @@ export default function Results() {
     selectedSession ? { sessionId: selectedSession } : "skip"
   );
 
+  const testSettings = useQuery(
+  api.settings.getTestSettings,
+  selectedSession ? { sessionId: selectedSession } : "skip"
+);
+
   const [modalText, setModalText] = useState("");
   const [showModal, setShowModal] = useState(false);
 
@@ -47,8 +52,12 @@ export default function Results() {
 
 
 const generatePDF = (r) => {
-  generateTypingPDF(r, { showSignature: false });
+  generateTypingPDF(r, {
+    showSignature: false,
+    postName: testSettings?.postName || null,
+  });
 };
+console.log("Test Settings:", testSettings);
 
 
   //DOWNLOAD ALL PDFs 
@@ -66,12 +75,18 @@ const generateAllPDFs = () => {
 
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
+
+  const postName = testSettings?.postName || "________";
+
+const examDate = testSettings?.examDate
+  ? new Date(testSettings.examDate).toLocaleDateString("en-GB")
+  : "________";
   doc.text(
-    "RESULT OF TYPING TEST FOR THE POST OF __________ HELD IN COMPUTER CENTER ON DATE __________",
-    pageWidth / 2,
-    20,
-    { align: "center", maxWidth: pageWidth - 30 }
-  );
+`RESULT OF TYPING TEST FOR THE POST OF ${postName} HELD IN COMPUTER CENTER ON DATE ${examDate}`,
+pageWidth / 2,
+20,
+{ align: "center", maxWidth: pageWidth - 30 }
+);
 
   // ================= SUMMARY TABLE =================
   let y = 40;
@@ -102,8 +117,8 @@ const generateAllPDFs = () => {
   doc.setFont("helvetica", "normal");
 
   //  Set qualifying criteria here
-  const qualifyingWpm = 30;
-  const qualifyingKdph = 9000;
+  const qualifyingWpm = testSettings?.qualifyingWpm ;
+  const qualifyingKdph = testSettings?.qualifyingKdph;
 
   sortedResults.forEach((r, index) => {
     if (y > pageHeight - 15) {
@@ -122,6 +137,7 @@ const generateAllPDFs = () => {
     const wrappedName = doc.splitTextToSize(r.name || "N/A", 45);
     doc.text(wrappedName, col.name + 2, y + 6);
     doc.text(`${qualifyingWpm}/${qualifyingKdph}`, col.qualifying + 2, y + 6);
+    doc.text(`${r.wpm || 0}/${r.kdph || 0}`, col.result + 2, y + 6);
     doc.text(isQualified ? "Qualified" : "Not Qualified", col.status + 2, y + 6);
 
     y += rowHeight;
@@ -207,8 +223,8 @@ const generateAllPDFs = () => {
     `${formatTime(r.seconds)}`,
     r.sessionName || "N/A",
     r.wpm || "N/A",
-    r.postApplied || "N/A",
-    r.kdph || 0,,
+    r.postApplied || testSettings?.postName || "N/A",
+    r.kdph || 0,
   ];
 
   doc.setFontSize(9);

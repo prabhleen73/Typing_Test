@@ -4,119 +4,35 @@ import styled from "styled-components";
 import { useRouter } from "next/router";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { jsPDF } from "jspdf";
 import { generateTypingPDF } from "../utils/generateTypingPdf";
 
 export default function TestSubmitted() {
   const router = useRouter();
   const { resultId } = router.query;
+  const isReady = router.isReady;
 
   const result = useQuery(
-    api.results.getResultById,
-    resultId ? { id: resultId } : "skip"
+  api.results.getResultById,
+  isReady && resultId ? { id: resultId } : "skip"
+);
+
+  // Fetch test settings (for post name)
+  const testSettings = useQuery(
+    api.settings.getTestSettings,
+    result?.sessionId ? { sessionId: result.sessionId } : "skip"
   );
 
-  // const generatePDF = () => {
-  //   if (!result) {
-  //     alert("Result not loaded yet");
-  //     return;
-  //   }
+  const generatePDF = () => {
+    if (!result) {
+      alert("Result not loaded yet");
+      return;
+    }
 
-  //   const doc = new jsPDF();
-  //   const pageWidth = doc.internal.pageSize.getWidth();
-  //   const pageHeight = doc.internal.pageSize.getHeight();
-  //   const submittedTime = new Date(result.submittedAt).toLocaleString();
-
-  //   // ================= HEADER AREA =================
-  //   doc.setFillColor(240, 245, 255);
-  //   doc.rect(0, 0, pageWidth, 40, "F");
-
-  //   doc.setFontSize(15);
-  //   doc.text("Typing Test Report", pageWidth / 2, 12, { align: "center" });
-
-  //   // ---- HEADER TABLE ----
-  //   const headers = [
-  //     "Candidate ID",
-  //     "Candidate Name",
-  //     "Time",
-  //     "Session",
-  //     "WPM",
-  //     "Post Applied",
-  //     "Key Depressions",
-  //   ];
-
-  //   const keyDepressions = Math.round(
-  //     (result.symbols / result.seconds) * 3600
-  //   );
-
-  //   const values = [
-  //     result.studentId || "N/A",
-  //     result.name || "N/A",
-  //     `${result.seconds} sec`,
-  //     result.sessionName || "N/A",
-  //     result.wpm || "N/A",
-  //     result.postApplied || "N/A",
-  //     keyDepressions || "N/A",
-  //   ];
-
-  //   doc.setFontSize(9);
-
-  //   const startX = 10;
-  //   const colWidth = (pageWidth - 20) / headers.length;
-
-  //   // Header Row
-  //   headers.forEach((header, i) => {
-  //     doc.text(header, startX + i * colWidth, 24);
-  //   });
-
-  //   // Value Row
-  //   values.forEach((value, i) => {
-  //     doc.text(String(value), startX + i * colWidth, 32);
-  //   });
-
-  //   // ================= CONTENT =================
-  //   doc.setFontSize(14);
-  //   doc.text("Typed Paragraph", 14, 50);
-
-  //   let y = 60;
-  //   doc.setFontSize(11);
-
-  //   const lines = doc.splitTextToSize(result.text || "", 180);
-
-  //   lines.forEach((line) => {
-  //     if (y > pageHeight - 20) {
-  //       doc.addPage();
-  //       y = 20;
-  //     }
-  //     doc.text(line, 14, y);
-  //     y += 7;
-  //   });
-
-  //   // ================= FOOTER =================
-  //   const pages = doc.getNumberOfPages();
-
-  //   for (let i = 1; i <= pages; i++) {
-  //     doc.setPage(i);
-  //     doc.setFontSize(9);
-  //     doc.text(`Submitted: ${submittedTime}`, 14, pageHeight - 10);
-  //     doc.text(`${i}/${pages}`, pageWidth - 14, pageHeight - 10, {
-  //       align: "right",
-  //     });
-  //   }
-
-  //   const blob = doc.output("blob");
-  //   window.open(URL.createObjectURL(blob));
-  // };
-
-const generatePDF = () => {
-  if (!result) {
-    alert("Result not loaded yet");
-    return;
-  }
-
-  generateTypingPDF(result, { showSignature: true });
-};
-  
+    generateTypingPDF(result, {
+      showSignature: true,
+      postName: testSettings?.postName || null,
+    });
+  };
 
   return (
     <Wrapper>

@@ -137,15 +137,15 @@ export default function TypingCard({ studentId }) {
   const draftSaveTimeoutRef = useRef(null);
 
   const paragraph = useQuery(
-  api.paragraphs.getParagraph,
-  sessionId ? { sessionId } : "skip"
-);
+    api.paragraphs.getParagraph,
+    sessionId ? { sessionId } : "skip"
+  );
   const timeSetting = useQuery(api.timeSettings.getTimeSetting);
   //const testSettings = useQuery(api.settings.getTestSettings, { sessionId });
   const testSettings = useQuery(
-  api.settings.getTestSettings,
-  sessionId ? { sessionId } : "skip"
-);
+    api.settings.getTestSettings,
+    sessionId ? { sessionId } : "skip"
+  );
   const qualifyingWpm = testSettings?.qualifyingWpm;
   const qualifyingKdph = testSettings?.qualifyingKdph;
 
@@ -154,7 +154,7 @@ export default function TypingCard({ studentId }) {
   const markSubmitted = useMutation(api.typingDrafts.markSubmitted);
 
 
-  
+
   // backend test active flag
   const updateTestActive = useMutation(api.sessions.updateTestActive);
 
@@ -168,9 +168,9 @@ export default function TypingCard({ studentId }) {
   );
 
   useEffect(() => {
-  const id = sessionStorage.getItem("sessionId");
-  setSessionId(id);
-}, []);
+    const id = sessionStorage.getItem("sessionId");
+    setSessionId(id);
+  }, []);
 
   // -------------------------------------------
   // Load sessionStorage values
@@ -630,7 +630,9 @@ export default function TypingCard({ studentId }) {
             <p><strong>Test Information:</strong></p>
             <p>• Minimum Speed: {qualifyingWpm || 30} WPM</p>
             <p>• Minimum KDPH: {qualifyingKdph || 10000}</p>
-            <p>• Duration: {timeSetting?.duration || 60} seconds</p>
+            <p>
+              • Duration: {Math.round((timeSetting?.duration || 60) / 60)} minute(s)
+            </p>
             <p>• Paragraph will be displayed on screen.</p>
             <p>• Accuracy, WPM and KDPH will be calculated.</p>
             <p>• Mistakes must be corrected with backspace to proceed.</p>

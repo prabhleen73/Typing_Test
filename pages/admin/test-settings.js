@@ -4,144 +4,167 @@ import { api } from "../../convex/_generated/api";
 import styled from "styled-components";
 
 export default function TestSettings() {
-  const updateSettings = useMutation(api.settings.updateTestSettings);
-  const updateTime = useMutation(api.timeSettings.updateTimeSetting);
+    const updateSettings = useMutation(api.settings.updateTestSettings);
+    const updateTime = useMutation(api.timeSettings.updateTimeSetting);
 
-  const sessions = useQuery(api.testSessions.getTestSessions);
-  const timeSetting = useQuery(api.timeSettings.getTimeSetting);
+    const sessions = useQuery(api.testSessions.getTestSessions);
+    const timeSetting = useQuery(api.timeSettings.getTimeSetting);
 
-  const [sessionId, setSessionId] = useState(null);
-  const [wpm, setWpm] = useState(30);
-  const [kdph, setKdph] = useState(9000);
-  const [duration, setDuration] = useState(60);
+    const [sessionId, setSessionId] = useState(null);
+    const [wpm, setWpm] = useState(30);
+    const [kdph, setKdph] = useState(9000);
+    const [duration, setDuration] = useState(60);
+    const [postName, setPostName] = useState("");
+    const [examDate, setExamDate] = useState("");
 
-  // Auto select first session
-  useEffect(() => {
-    if (sessions && sessions.length > 0) {
-      setSessionId(sessions[0]._id);
-    }
-  }, [sessions]);
+    // Auto select first session
+    useEffect(() => {
+        if (sessions && sessions.length > 0) {
+            setSessionId(sessions[0]._id);
+        }
+    }, [sessions]);
 
-  const settings = useQuery(
-    api.settings.getTestSettings,
-    sessionId ? { sessionId } : "skip"
-  );
-
-  // Load saved session settings
-  useEffect(() => {
-    if (settings) {
-      setWpm(settings.qualifyingWpm || 30);
-      setKdph(settings.qualifyingKdph || 9000);
-    }
-  }, [settings]);
-
-  // Load global time
-  useEffect(() => {
-    if (timeSetting) {
-      setDuration(timeSetting.duration || 60);
-    }
-  }, [timeSetting]);
-
-  const handleSave = async () => {
-    if (!sessionId) {
-      alert("Please select a session.");
-      return;
-    }
-
-    const selectedSession = sessions.find((s) => s._id === sessionId);
-
-    try {
-      await updateSettings({
-        sessionId,
-        sessionName: selectedSession?.name || "",
-        qualifyingWpm: Number(wpm),
-        qualifyingKdph: Number(kdph),
-      });
-
-      alert("Session settings saved!");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to save session settings.");
-    }
-  };
-
-  const handleSaveTime = async () => {
-    try {
-      await updateTime({
-        duration: Number(duration),
-      });
-
-      alert("Test time updated!");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to update time.");
-    }
-  };
-
-  if (!sessions) {
-    return (
-      <div style={{ textAlign: "center", marginTop: "40vh" }}>
-        Loading sessions...
-      </div>
+    const settings = useQuery(
+        api.settings.getTestSettings,
+        sessionId ? { sessionId } : "skip"
     );
-  }
 
-  return (
-    <Wrapper>
-      <Card>
-        <Title>Typing Test Settings</Title>
+    // Load saved session settings
+    useEffect(() => {
+        if (settings) {
+            setWpm(settings.qualifyingWpm || 30);
+            setKdph(settings.qualifyingKdph || 9000);
+        }
+    }, [settings]);
 
-        <Field>
-          <Label>Select Session</Label>
-          <Select
-            value={sessionId || ""}
-            onChange={(e) => setSessionId(e.target.value)}
-          >
-            <option value="">Select Session</option>
+    // Load global time
+    useEffect(() => {
+        if (timeSetting) {
+            setDuration(timeSetting.duration || 60);
+        }
+    }, [timeSetting]);
 
-            {sessions.map((s) => (
-              <option key={s._id} value={s._id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
+    const handleSave = async () => {
+        if (!sessionId) {
+            alert("Please select a session.");
+            return;
+        }
 
-        <Field>
-          <Label>Qualifying WPM</Label>
-          <Input
-            type="number"
-            value={wpm}
-            onChange={(e) => setWpm(e.target.value)}
-          />
-        </Field>
+        const selectedSession = sessions.find((s) => s._id === sessionId);
 
-        <Field>
-          <Label>Qualifying KDPH</Label>
-          <Input
-            type="number"
-            value={kdph}
-            onChange={(e) => setKdph(e.target.value)}
-          />
-        </Field>
+        try {
+            await updateSettings({
+                sessionId,
+                sessionName: selectedSession?.name || "",
+                postName,
+                examDate: new Date(examDate).getTime(),
+                qualifyingWpm: Number(wpm),
+                qualifyingKdph: Number(kdph),
+            });
 
-        <Button onClick={handleSave}>Save Session Settings</Button>
+            alert("Session settings saved!");
+        } catch (err) {
+            console.error(err);
+            alert("Failed to save session settings.");
+        }
+    };
 
-        <Divider />
+    const handleSaveTime = async () => {
+        try {
+            await updateTime({
+                duration: Number(duration),
+            });
 
-        <Field>
-          <Label> Test Duration (minutes)</Label>
-          <Input
-            type="number"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-          />
-        </Field>
+            alert("Test time updated!");
+        } catch (err) {
+            console.error(err);
+            alert("Failed to update time.");
+        }
+    };
 
-        <Button onClick={handleSaveTime}>Save Test Time</Button>
-      </Card>
-    </Wrapper>
-  );
+    if (!sessions) {
+        return (
+            <div style={{ textAlign: "center", marginTop: "40vh" }}>
+                Loading sessions...
+            </div>
+        );
+    }
+
+    return (
+        <Wrapper>
+            <Card>
+                <Title>Typing Test Settings</Title>
+
+                <Field>
+                    <Label>Select Session</Label>
+                    <Select
+                        value={sessionId || ""}
+                        onChange={(e) => setSessionId(e.target.value)}
+                    >
+                        <option value="">Select Session</option>
+
+                        {sessions.map((s) => (
+                            <option key={s._id} value={s._id}>
+                                {s.name}
+                            </option>
+                        ))}
+                    </Select>
+                </Field>
+
+                <Field>
+                    <Label>Qualifying WPM</Label>
+                    <Input
+                        type="number"
+                        value={wpm}
+                        onChange={(e) => setWpm(e.target.value)}
+                    />
+                </Field>
+
+                <Field>
+                    <Label>Qualifying KDPH</Label>
+                    <Input
+                        type="number"
+                        value={kdph}
+                        onChange={(e) => setKdph(e.target.value)}
+                    />
+                </Field>
+
+                <Button onClick={handleSave}>Save Session Settings</Button>
+
+                <Divider />
+
+                <Field>
+                    <Label> Test Duration (minutes)</Label>
+                    <Input
+                        type="number"
+                        value={duration}
+                        onChange={(e) => setDuration(e.target.value)}
+                    />
+                </Field>
+
+                <Field>
+                    <Label>Post Name</Label>
+                    <Input
+                        type="text"
+                        value={postName}
+                        onChange={(e) => setPostName(e.target.value)}
+                        placeholder="Enter Post Name (e.g. LDC)"
+                    />
+                </Field>
+
+                <Field>
+                    <Label>Exam Date</Label>
+                    <Input
+                        type="date"
+                        value={examDate}
+                        onChange={(e) => setExamDate(e.target.value)}
+                    />
+                </Field>
+
+                <Button onClick={handleSaveTime}>Save Test Time</Button>
+            </Card>
+        </Wrapper>
+    );
 }
 
 /* ---------------- UI ---------------- */

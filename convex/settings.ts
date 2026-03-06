@@ -5,13 +5,13 @@ export const updateTestSettings = mutation({
   args: {
     sessionId: v.id("testSessions"),
     sessionName: v.string(),
+    postName: v.string(),
+    examDate: v.number(), // timestamp
     qualifyingWpm: v.number(),
     qualifyingKdph: v.number(),
-    
   },
 
   handler: async (ctx, args) => {
-
     const existing = await ctx.db
       .query("testSettings")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
@@ -21,6 +21,8 @@ export const updateTestSettings = mutation({
       await ctx.db.patch(existing._id, {
         sessionId: args.sessionId,
         sessionName: args.sessionName,
+        postName: args.postName,
+        examDate: args.examDate,
         qualifyingWpm: args.qualifyingWpm,
         qualifyingKdph: args.qualifyingKdph,
         updatedAt: Date.now(),
@@ -28,7 +30,9 @@ export const updateTestSettings = mutation({
     } else {
       await ctx.db.insert("testSettings", {
         sessionId: args.sessionId,
-          sessionName: args.sessionName,
+        sessionName: args.sessionName,
+        postName: args.postName,
+        examDate: args.examDate,
         qualifyingWpm: args.qualifyingWpm,
         qualifyingKdph: args.qualifyingKdph,
         updatedAt: Date.now(),
@@ -43,9 +47,11 @@ export const getTestSettings = query({
   },
 
   handler: async (ctx, args) => {
-    return await ctx.db
+    const settings = await ctx.db
       .query("testSettings")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .first();
+
+    return settings || null;
   },
 });
