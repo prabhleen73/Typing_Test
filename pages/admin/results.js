@@ -52,9 +52,14 @@ export default function Results() {
 
 
 const generatePDF = (r) => {
+  if (!testSettings) {
+    alert("Settings not loaded yet");
+    return;
+  }
+
   generateTypingPDF(r, {
     showSignature: false,
-    postName: testSettings?.postName || null,
+    postName: testSettings.postName,
   });
 };
 console.log("Test Settings:", testSettings);

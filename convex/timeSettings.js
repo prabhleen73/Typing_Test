@@ -8,7 +8,7 @@ export const getTimeSetting = query({
 
     // default = 60 seconds
     if (!setting) {
-      return { duration: 60 };
+      return { duration: null };
     }
 
     return setting; // return seconds

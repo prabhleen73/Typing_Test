@@ -12,6 +12,11 @@ export const updateTestSettings = mutation({
   },
 
   handler: async (ctx, args) => {
+
+     if (!args.postName) {
+      throw new Error("Post name required");
+    }
+
     const existing = await ctx.db
       .query("testSettings")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))

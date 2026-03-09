@@ -14,21 +14,40 @@ export default function ManageSessions() {
   const [creating, setCreating] = useState(false);
 
   const handleCreate = async () => {
-    if (!name.trim()) {
+
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
       alert("Please enter a session name.");
       return;
     }
 
+    /* Prevent duplicate session names on UI side */
+    const normalize = (str) => str.toLowerCase().replace(/\s+/g, "");
+
+if (sessions?.some((s) => normalize(s.name) === normalize(trimmedName))) {
+  alert("Session with this name already exists.");
+  return;
+}
+
     try {
+
       setCreating(true);
-      await createSession({ name: name.trim() });
+
+      await createSession({ name: trimmedName });
+
       setName("");
       alert("Session created successfully!");
+
     } catch (err) {
+
       console.error(err);
-      alert("Failed to create session.");
+      alert(err.message || "Failed to create session.");
+
     } finally {
+
       setCreating(false);
+
     }
   };
 
@@ -38,9 +57,11 @@ export default function ManageSessions() {
 
   return (
     <Container>
+
       <Title>Manage Test Sessions</Title>
 
       <CreateBox>
+
         <h3>Create New Session</h3>
 
         <Input
@@ -52,9 +73,11 @@ export default function ManageSessions() {
         <Button onClick={handleCreate} disabled={creating}>
           {creating ? "Creating..." : "Create Session"}
         </Button>
+
       </CreateBox>
 
       <SessionList>
+
         <h3>All Sessions</h3>
 
         {!sessions ? (
@@ -64,15 +87,19 @@ export default function ManageSessions() {
         ) : (
           sessions.map((s) => (
             <SessionCard key={s._id}>
+
               <span>{s.name}</span>
 
               <ButtonSmall onClick={() => handleConfigure(s._id)}>
                 Configure Test
               </ButtonSmall>
+
             </SessionCard>
           ))
         )}
+
       </SessionList>
+
     </Container>
   );
 }

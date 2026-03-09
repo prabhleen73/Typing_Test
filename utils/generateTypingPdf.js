@@ -34,15 +34,15 @@ export const generateTypingPDF = (result, options = {}) => {
         return `${mins} min`;
     };
 
-    const values = [
-        result.studentId || "N/A",
-        result.name || "N/A",
-        `${formatTime(result.seconds)}`,
-        result.sessionName || "N/A",
-        result.wpm || "N/A",
-        result.postApplied || postName || "N/A",
-        result.kdph || 0,
-    ];
+   const values = [
+  result.studentId || "N/A",
+  result.name || "N/A",
+  `${formatTime(result.seconds)}`,
+  result.sessionName || "N/A",
+  result.wpm || "N/A",
+  postName ? postName : "N/A",
+  result.kdph || 0,
+];
 
     doc.setFontSize(9);
 

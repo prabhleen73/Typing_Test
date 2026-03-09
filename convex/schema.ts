@@ -17,9 +17,10 @@ export default defineSchema({
 
       // Test Sessions
     testSessions: defineTable({
-  name: v.string(),
-  createdAt: v.number(),
-}),
+    name: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_name", ["name"]),   
 
   // Secure backend sessions
   sessions: defineTable({

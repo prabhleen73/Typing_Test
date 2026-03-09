@@ -405,7 +405,7 @@ export default function TypingCard({ studentId }) {
       }
 
       if (countDown === null) {
-        setCountDown(timeSetting.duration ?? 60);
+        setCountDown(timeSetting.duration ?? null);
       }
     }, 30);
   }, [
@@ -467,7 +467,7 @@ export default function TypingCard({ studentId }) {
   const startTimer = useCallback(async () => {
     if (started) return;
 
-    const duration = timeSetting?.duration || 60;
+    const duration = timeSetting?.duration || 0;
     setCountDown(duration);
 
     secRef.current = 0;
@@ -581,7 +581,7 @@ export default function TypingCard({ studentId }) {
       const safeRemainingSeconds =
         typeof countDown === "number"
           ? countDown
-          : timeSetting?.duration || 60;
+          : timeSetting?.duration || 0;
 
       saveDraft({
         studentId: resolvedStudentId,
@@ -589,7 +589,7 @@ export default function TypingCard({ studentId }) {
         paragraphId: paragraphIdRef.current,
         typedText: value,
         started: true,
-        duration: timeSetting?.duration || 60,
+        duration: timeSetting?.duration || 0,
         remainingSeconds: Math.max(0, safeRemainingSeconds),
       });
     }, 400);
@@ -631,7 +631,7 @@ export default function TypingCard({ studentId }) {
             <p>• Minimum Speed: {qualifyingWpm || 30} WPM</p>
             <p>• Minimum KDPH: {qualifyingKdph || 10000}</p>
             <p>
-              • Duration: {Math.round((timeSetting?.duration || 60) / 60)} minute(s)
+              • Duration: {Math.round((timeSetting?.duration || 0) / 60)} minute(s)
             </p>
             <p>• Paragraph will be displayed on screen.</p>
             <p>• Accuracy, WPM and KDPH will be calculated.</p>
