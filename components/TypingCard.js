@@ -221,7 +221,7 @@ export default function TypingCard({ studentId }) {
 
       const wpm = Math.round((correctChars * 60) / (5 * secondsTaken));
 
-      const kdph = Math.round(wpm * 5 * 60);
+      const kdph = Math.round(correctChars *3600/secondsTaken);
 
       let resolvedStudentIdLocal = studentId ?? storedStudentId ?? null;
       if (!resolvedStudentIdLocal && typeof window !== "undefined") {

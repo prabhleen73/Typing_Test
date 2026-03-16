@@ -12,10 +12,8 @@ export const createStudent = mutation({
     sessionName: v.string(),
   },
 
-  handler: async (
-    ctx,
-    { name, applicationNumber, dob, sessionId, sessionName }
-  ) => {
+  handler: async (ctx, { name, applicationNumber, dob, sessionId, sessionName }) => {
+
     if (!name || !applicationNumber || !dob || !sessionId || !sessionName) {
       return { success: false, message: "Missing required fields" };
     }
@@ -23,9 +21,10 @@ export const createStudent = mutation({
     const firstName = name.trim().split(/\s+/)[0].toLowerCase();
     const firstFour = firstName.slice(0, 4);
 
-    const [dd, mm, yyyy] = dob.split("-");
+    const [, , yyyy] = dob.split("-");
     const generatedPassword = `${firstFour}${yyyy}`;
 
+    // 🔴 Check if student already exists
     const existing = await ctx.db
       .query("students")
       .withIndex("by_applicationNumber", (q) =>
@@ -34,17 +33,13 @@ export const createStudent = mutation({
       .first();
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        name,
-        dob,
-        password: generatedPassword,
-        sessionId,
-        sessionName,
-      });
-
-      return { success: true, updated: true };
+      return {
+        success: false,
+        message: "Student already exists",
+      };
     }
 
+    // ✅ Insert only if student does not exist
     await ctx.db.insert("students", {
       name,
       applicationNumber,
@@ -54,7 +49,7 @@ export const createStudent = mutation({
       sessionName,
     });
 
-    return { success: true, inserted: true };
+    return { success: true };
   },
 });
 
@@ -212,5 +207,28 @@ export const getStudentById = query({
         q.eq("applicationNumber", studentId)
       )
       .first();
+  },
+});
+
+export const getExistingStudents = query({
+  args: {
+    applicationNumbers: v.array(v.string()),
+  },
+
+  handler: async (ctx, { applicationNumbers }) => {
+
+    // remove duplicates first
+    const uniqueApps = [...new Set(applicationNumbers)];
+
+    // fetch all students once
+    const students = await ctx.db.query("students").collect();
+
+    const existingSet = new Set(
+      students.map((s) => s.applicationNumber)
+    );
+
+    const existing = uniqueApps.filter(app => existingSet.has(app));
+
+    return existing;
   },
 });
