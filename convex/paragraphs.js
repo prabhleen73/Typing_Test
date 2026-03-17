@@ -17,8 +17,7 @@ function validateParagraphText(text) {
   };
 }
 
-//verify super admin
-
+// ================= SUPER ADMIN CHECK =================
 async function requireSuperAdmin(ctx, token) {
   const session = await ctx.db
     .query("adminSessions")
@@ -38,7 +37,7 @@ async function requireSuperAdmin(ctx, token) {
   return admin;
 }
 
-
+// ================= ADD PARAGRAPH =================
 export const addParagraph = mutation({
   args: {
     content: v.string(),
@@ -47,46 +46,57 @@ export const addParagraph = mutation({
   },
   handler: async (ctx, args) => {
 
-    // ===============================
-    // 1️⃣ Validate admin session
-    // ===============================
+    console.log("========== ADD PARAGRAPH START ==========");
+    console.log("ARGS TOKEN:", args.token);
+
+    // 🔥 Get session
     const session = await ctx.db
       .query("adminSessions")
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .unique();
 
-    if (!session || session.expiresAt < Date.now()) {
-      throw new Error("Unauthorized");
+    console.log("SESSION FOUND:", session);
+
+    if (!session) {
+      throw new Error("No session found");
     }
 
+    if (session.expiresAt < Date.now()) {
+      throw new Error("Session expired");
+    }
+
+    // 🔥 Get admin
     const admin = await ctx.db.get(session.adminId);
 
+    console.log("ADMIN:", admin);
+    console.log("ROLE RAW:", JSON.stringify(admin?.role));
+
     if (!admin) {
-      throw new Error("Unauthorized");
+      throw new Error("Admin not found");
     }
 
-    // ===============================
-    // Validate text
-    // ===============================
-    const result = validateParagraphText(args.content);
+    // 🔥 Normalize role (IMPORTANT FIX)
+    const role = admin.role?.trim().toLowerCase();
+    console.log("NORMALIZED ROLE:", role);
+
+    // ================= TEXT VALIDATION =================
+    const content = args.content.trim();
+
+    const result = validateParagraphText(content);
     if (!result.valid) {
       throw new Error(
         "Invalid characters found: " + result.invalidChars.join(" ")
       );
     }
 
-    // ===============================
-    // 3️⃣ Get session name
-    // ===============================
+    // ================= GET SESSION =================
     const sessionData = await ctx.db.get(args.sessionId);
 
     if (!sessionData) {
       throw new Error("Session not found");
     }
 
-    // ===============================
-    // 4️⃣ Check existing paragraph
-    // ===============================
+    // ================= CHECK EXISTING =================
     const existing = await ctx.db
       .query("paragraphs")
       .withIndex("by_session", (q) =>
@@ -94,28 +104,28 @@ export const addParagraph = mutation({
       )
       .unique();
 
-    // ===============================
-    //  SUPER ADMIN
-    // ===============================
-    if (admin.role === "super_admin") {
+    console.log("EXISTING PARAGRAPH:", existing);
+
+    // ================= SUPER ADMIN =================
+    if (role === "super_admin") {
+      console.log("ROLE MATCH: SUPER ADMIN");
 
       if (existing) {
         await ctx.db.delete(existing._id);
       }
 
       return await ctx.db.insert("paragraphs", {
-        content: args.content.trim(),
+        content,
         sessionId: args.sessionId,
-        sessionName: sessionData.name,   
+        sessionName: sessionData.name,
         updatedAt: Date.now(),
         isLocked: true,
       });
     }
 
-    // ===============================
-    //  NORMAL ADMIN
-    // ===============================
-    if (admin.role === "admin") {
+    // ================= NORMAL ADMIN =================
+    if (role === "admin") {
+      console.log("ROLE MATCH: ADMIN");
 
       if (existing) {
         throw new Error(
@@ -124,15 +134,17 @@ export const addParagraph = mutation({
       }
 
       return await ctx.db.insert("paragraphs", {
-        content: args.content.trim(),
+        content,
         sessionId: args.sessionId,
-        sessionName: sessionData.name,   
+        sessionName: sessionData.name,
         updatedAt: Date.now(),
         isLocked: true,
       });
     }
 
-    throw new Error("Unauthorized");
+    // ================= FALLBACK =================
+    console.log("ROLE MISMATCH ERROR:", role);
+    throw new Error("Unauthorized: Role mismatch -> " + role);
   },
 });
 
@@ -144,21 +156,18 @@ export const deleteParagraph = mutation({
   },
   handler: async (ctx, args) => {
     await requireSuperAdmin(ctx, args.token);
-
     await ctx.db.delete(args.id);
   },
 });
 
-
-//get all paragraphs-admin
+// ================= GET ALL =================
 export const getAllParagraphs = query({
   handler: async (ctx) => {
     return await ctx.db.query("paragraphs").collect();
   },
 });
 
-//get paragraph (student test)
-
+// ================= GET ONE =================
 export const getParagraph = query({
   args: {
     sessionId: v.id("testSessions"),
@@ -173,6 +182,7 @@ export const getParagraph = query({
   },
 });
 
+// ================= UPDATE =================
 export const updateParagraph = mutation({
   args: {
     id: v.id("paragraphs"),
@@ -187,7 +197,9 @@ export const updateParagraph = mutation({
       throw new Error("Paragraph not found");
     }
 
-    const result = validateParagraphText(args.content);
+    const content = args.content.trim();
+
+    const result = validateParagraphText(content);
     if (!result.valid) {
       throw new Error(
         "Invalid characters found: " + result.invalidChars.join(" ")
@@ -195,7 +207,7 @@ export const updateParagraph = mutation({
     }
 
     await ctx.db.patch(args.id, {
-      content: args.content.trim(),
+      content,
       updatedAt: Date.now(),
     });
   },
