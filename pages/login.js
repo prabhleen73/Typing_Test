@@ -44,7 +44,7 @@ export default function LoginPage() {
           token,
         });
 
-        // ❌ invalid cookie → logout and allow login
+        //  invalid cookie → logout and allow login
         if (!session?.valid) {
           await fetch("/api/logout", { method: "POST" });
           return;
@@ -82,7 +82,7 @@ export default function LoginPage() {
       sessionStorage.setItem("sessionId", result.sessionId);
       sessionStorage.setItem("testActive", "true");
 
-      //  IMPORTANT: store token for updateTestActive mutation
+      //  store token for updateTestActive mutation
       sessionStorage.setItem("token", result.token);
 
       //  If you have name in result, save it

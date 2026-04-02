@@ -76,7 +76,9 @@ const generateAllPDFs = () => {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  const sortedResults = [...results].sort((a, b) => b.wpm - a.wpm);
+  const sortedResults = [...results].sort(
+  (a, b) => (b.rawWpm ?? b.wpm) - (a.rawWpm ?? a.wpm)
+);
 
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
@@ -132,7 +134,7 @@ pageWidth / 2,
     }
 
     const isQualified =
-      r.wpm >= qualifyingWpm && r.kdph >= qualifyingKdph;
+  (r.rawWpm ?? r.wpm) >= qualifyingWpm && r.kdph >= qualifyingKdph;
 
     doc.rect(14, y, pageWidth - 28, rowHeight);
 
@@ -341,7 +343,7 @@ pageWidth / 2,
 
             <tbody>
               {[...results]
-                .sort((a, b) => b.wpm - a.wpm)
+                .sort((a, b) => (b.rawWpm ?? b.wpm) - (a.rawWpm ?? a.wpm))
                 .map((r, index) => (
                   <tr key={r._id}>
                     <td>{index + 1}</td>

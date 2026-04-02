@@ -28,6 +28,7 @@ export const saveResult = mutation({
     seconds: v.number(),
     accuracy: v.number(),
     wpm: v.number(),
+    rawWpm: v.number(),
     text: v.optional(v.string()),
     kdph: v.number(), 
   },
@@ -69,11 +70,7 @@ export const saveResult = mutation({
       throw new Error("Student not found");
     }
 
-    // calculate key depressions per hour
-    const keyDepressions =
-      args.seconds > 0
-        ? Math.round((args.symbols / args.seconds) * 3600)
-        : 0;
+  
 
    const resultId = await ctx.db.insert("results", {
   studentId: args.studentId,     
@@ -84,6 +81,7 @@ export const saveResult = mutation({
   seconds: args.seconds,
   accuracy: args.accuracy,
   wpm: args.wpm,
+  rawWpm: args.rawWpm, 
   kdph: args.kdph, 
   text: args.text ?? "",
   paragraphContent,

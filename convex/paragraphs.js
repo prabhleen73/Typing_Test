@@ -46,16 +46,11 @@ export const addParagraph = mutation({
   },
   handler: async (ctx, args) => {
 
-    console.log("========== ADD PARAGRAPH START ==========");
-    console.log("ARGS TOKEN:", args.token);
-
-    // 🔥 Get session
+    //Get session
     const session = await ctx.db
       .query("adminSessions")
       .withIndex("by_token", (q) => q.eq("token", args.token))
       .unique();
-
-    console.log("SESSION FOUND:", session);
 
     if (!session) {
       throw new Error("No session found");
@@ -65,22 +60,19 @@ export const addParagraph = mutation({
       throw new Error("Session expired");
     }
 
-    // 🔥 Get admin
+    //  Get admin
     const admin = await ctx.db.get(session.adminId);
-
-    console.log("ADMIN:", admin);
-    console.log("ROLE RAW:", JSON.stringify(admin?.role));
 
     if (!admin) {
       throw new Error("Admin not found");
     }
 
-    // 🔥 Normalize role (IMPORTANT FIX)
+    //  Normalize role (IMPORTANT FIX)
     const role = admin.role?.trim().toLowerCase();
-    console.log("NORMALIZED ROLE:", role);
+    
 
     // ================= TEXT VALIDATION =================
-    const content = args.content.trim();
+    const content = args.content.trim();                      
 
     const result = validateParagraphText(content);
     if (!result.valid) {
@@ -104,11 +96,11 @@ export const addParagraph = mutation({
       )
       .unique();
 
-    console.log("EXISTING PARAGRAPH:", existing);
+    
 
     // ================= SUPER ADMIN =================
     if (role === "super_admin") {
-      console.log("ROLE MATCH: SUPER ADMIN");
+      
 
       if (existing) {
         await ctx.db.delete(existing._id);
@@ -125,7 +117,7 @@ export const addParagraph = mutation({
 
     // ================= NORMAL ADMIN =================
     if (role === "admin") {
-      console.log("ROLE MATCH: ADMIN");
+      
 
       if (existing) {
         throw new Error(
@@ -143,7 +135,6 @@ export const addParagraph = mutation({
     }
 
     // ================= FALLBACK =================
-    console.log("ROLE MISMATCH ERROR:", role);
     throw new Error("Unauthorized: Role mismatch -> " + role);
   },
 });

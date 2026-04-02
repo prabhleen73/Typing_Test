@@ -219,7 +219,8 @@ export default function TypingCard({ studentId }) {
           ? 0
           : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
 
-      const wpm = Math.round((correctChars * 60) / (5 * secondsTaken));
+     const rawWPM = Number(((correctChars * 60) / (5 * secondsTaken)).toFixed(2));
+      const wpm = Math.floor(rawWPM); // display only
 
       const kdph = Math.round(correctChars *3600/secondsTaken);
 
@@ -241,7 +242,8 @@ export default function TypingCard({ studentId }) {
         symbols: correctChars,
         seconds: secondsTaken,
         accuracy,
-        wpm,
+        wpm,    // display value
+        rawWpm: rawWPM,//precise value
         kdph,
         text: finalInput,
       });

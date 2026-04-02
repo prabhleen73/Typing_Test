@@ -21,10 +21,10 @@ export const createStudent = mutation({
     const firstName = name.trim().split(/\s+/)[0].toLowerCase();
     const firstFour = firstName.slice(0, 4);
 
-    const [, , yyyy] = dob.split("-");
-    const generatedPassword = `${firstFour}${yyyy}`;
+   const year = new Date(dob).getFullYear();
 
-    // 🔴 Check if student already exists
+  const generatedPassword = `${firstFour}${year}`;
+    //  Check if student already exists
     const existing = await ctx.db
       .query("students")
       .withIndex("by_applicationNumber", (q) =>

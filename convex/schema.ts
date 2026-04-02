@@ -53,6 +53,7 @@ export default defineSchema({
     seconds: v.number(),
     accuracy: v.number(),
     wpm: v.number(),
+    rawWpm: v.number(),
     kdph: v.optional(v.number()),
 
     text: v.string(),
