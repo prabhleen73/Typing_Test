@@ -196,61 +196,96 @@ export default function TypingCard({ studentId }) {
 
   }, []);
 
-  // -------------------------------------------
+
   // Save result helper
-  // -------------------------------------------
   const handleSaveResultToDB = useCallback(
     async ({ input, seconds }) => {
-      const finalInput = input ?? userInputRef.current ?? "";
+      const rawInput = input ?? userInputRef.current ?? "";
 
+
+      // Calculate correct chars (STOP at first mistake)
       let correctChars = 0;
-      for (let i = 0; i < finalInput.length; i++) {
-        if (finalInput[i] === text[i]) correctChars++;
+
+      for (let i = 0; i < rawInput.length; i++) {
+        if (rawInput[i] === text[i]) {
+          correctChars++;
+        } else {
+          break;
+        }
       }
 
-      const secondsTaken =
-        completionTimeRef.current ?? seconds ?? Math.max(1, secRef.current);
+      //  Clean text (remove wrong part)
+      const finalInput = rawInput.slice(0, correctChars);
 
-      const totalTyped = finalInput.length + backspaceCountRef.current;
-      const mistakes = backspaceCountRef.current;
 
+      //  Total typed
+      const totalTyped = rawInput.length;
+
+
+      //Detect uncorrected mistake (EDGE CASE)
+      const hasUncorrectedError = correctChars < rawInput.length;
+
+      // Mistakes
+      const correctedMistakes = backspaceCountRef.current;
+
+      const uncorrectedMistakes = hasUncorrectedError ? 1 : 0;
+
+      const mistakes = correctedMistakes + uncorrectedMistakes;
+
+
+      //  Accuracy 
       const accuracy =
         totalTyped === 0
           ? 0
-          : Math.round(((totalTyped - mistakes) / totalTyped) * 100);
+          : Math.floor(((totalTyped - mistakes) / totalTyped) * 100);
 
-     const rawWPM = Number(((correctChars * 60) / (5 * secondsTaken)).toFixed(2));
-      const wpm = Math.floor(rawWPM); // display only
+      // STEP 7: Time
+      const secondsTaken =
+        completionTimeRef.current ?? seconds ?? Math.max(1, secRef.current);
 
-      const kdph = Math.round(correctChars *3600/secondsTaken);
+      //WPM
+      const rawWPM = Number(
+        ((correctChars * 60) / (5 * secondsTaken)).toFixed(2)
+      );
 
+      const wpm = Math.floor(rawWPM);
+
+      //KDPH
+      const kdph = Math.round((correctChars * 3600) / secondsTaken);
+
+      //Student ID
       let resolvedStudentIdLocal = studentId ?? storedStudentId ?? null;
+
       if (!resolvedStudentIdLocal && typeof window !== "undefined") {
         resolvedStudentIdLocal = sessionStorage.getItem("studentId");
       }
 
-      //  FIX name safely
-      let finalName = studentName;
-      if (!finalName || finalName.trim() === "") {
-        finalName = sessionStorage.getItem("studentName") || "N/A";
-      }
-
-      //  ONLY ONE resultId declaration
+      //SAVE RESULT
       const resultId = await saveResult({
         studentId: resolvedStudentIdLocal,
         paragraphId: paragraphIdRef.current,
         symbols: correctChars,
         seconds: secondsTaken,
         accuracy,
-        wpm,    // display value
-        rawWpm: rawWPM,//precise value
+        wpm,
+        rawWpm: rawWPM,
         kdph,
         text: finalInput,
+        rawText: rawInput,
+        mistakes,
+        correctedMistakes,
+        uncorrectedMistakes,
+
       });
 
       return resultId;
     },
-    [saveResult, studentId, storedStudentId, text, studentName]
+    [
+      saveResult,
+      studentId,
+      storedStudentId,
+      text,
+    ]
   );
 
   // -------------------------------------------

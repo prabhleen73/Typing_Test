@@ -39,7 +39,7 @@ export default function TestSettings() {
       setPostName(settings.postName ?? "");
       setExamDate(
         settings.examDate
-          ? new Date(settings.examDate).toISOString().substring(0, 10)
+          ? setExamDate(settings.examDate || "")
           : ""
       );
     }
@@ -72,7 +72,7 @@ export default function TestSettings() {
         sessionId,
         sessionName: selectedSession?.name || "",
         postName: postName.trim(),
-        examDate: new Date(examDate + "T00:00:00").getTime(),
+        examDate: examDate,
         qualifyingWpm: Number(wpm),
         qualifyingKdph: Number(kdph),
       });

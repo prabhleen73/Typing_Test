@@ -57,6 +57,10 @@ export default defineSchema({
     kdph: v.optional(v.number()),
 
     text: v.string(),
+    rawText: v.optional(v.string()),
+    mistakes: v.optional(v.number()),
+    correctedMistakes: v.optional(v.number()),
+    uncorrectedMistakes: v.optional(v.number()),
     paragraphContent: v.string(),
     originalSymbols: v.number(),
     submittedAt: v.string(),

@@ -30,7 +30,11 @@ export const saveResult = mutation({
     wpm: v.number(),
     rawWpm: v.number(),
     text: v.optional(v.string()),
+    rawText: v.optional(v.string()), 
     kdph: v.number(), 
+    mistakes: v.optional(v.number()),
+    correctedMistakes: v.optional(v.number()),
+    uncorrectedMistakes: v.optional(v.number()),
   },
 
   handler: async (ctx, args) => {
@@ -84,6 +88,10 @@ export const saveResult = mutation({
   rawWpm: args.rawWpm, 
   kdph: args.kdph, 
   text: args.text ?? "",
+  rawText: args.rawText ?? "",
+  mistakes: args.mistakes ?? 0,
+  correctedMistakes: args.correctedMistakes ?? 0,
+  uncorrectedMistakes: args.uncorrectedMistakes ?? 0,
   paragraphContent,
   originalSymbols,
   submittedAt: new Date().toISOString(),
