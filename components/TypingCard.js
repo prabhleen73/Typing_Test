@@ -135,6 +135,8 @@ export default function TypingCard({ studentId }) {
   const intervalRef = useRef(null);
   const submittedRef = useRef(false);
   const draftSaveTimeoutRef = useRef(null);
+  const correctedMistakesRef = useRef(0);
+  const errorActiveRef = useRef(false);
 
   const paragraph = useQuery(
     api.paragraphs.getParagraph,
@@ -221,24 +223,24 @@ export default function TypingCard({ studentId }) {
       //  Total typed
       const totalTyped = rawInput.length;
 
-
-      //Detect uncorrected mistake (EDGE CASE)
+      // Detect uncorrected mistake (EDGE CASE)
       const hasUncorrectedError = correctChars < rawInput.length;
 
-      // Mistakes
-      const correctedMistakes = backspaceCountRef.current;
+      // Count corrections safely (avoid overcounting backspace spam)
+      const correctedMistakes = correctedMistakesRef.current;
 
+      // Only 1 uncorrected mistake possible in your system
       const uncorrectedMistakes = hasUncorrectedError ? 1 : 0;
 
       const mistakes = correctedMistakes + uncorrectedMistakes;
 
+      // Accuracy
+      const safeMistakes = Math.min(mistakes, totalTyped);
 
-      //  Accuracy 
       const accuracy =
         totalTyped === 0
           ? 0
-          : Math.floor(((totalTyped - mistakes) / totalTyped) * 100);
-
+          : Math.floor(((totalTyped - safeMistakes) / totalTyped) * 100);
       // STEP 7: Time
       const secondsTaken =
         completionTimeRef.current ?? seconds ?? Math.max(1, secRef.current);
@@ -574,10 +576,16 @@ export default function TypingCard({ studentId }) {
     const value = e.target.value;
     const prevValue = userInputRef.current;
 
-    // backspaces count
-    if (value.length < prevValue.length) {
-      backspaceCountRef.current += prevValue.length - value.length;
-    }
+   if (value.length < prevValue.length) {
+  const diff = prevValue.length - value.length;
+
+
+  // ONLY count correction if error was active
+  if (errorActiveRef.current) {
+   correctedMistakesRef.current += 1;
+    errorActiveRef.current = false;
+  }
+}
 
     setCursorIndex(value.length);
     if (value.length > text.length) return;
@@ -590,6 +598,7 @@ export default function TypingCard({ studentId }) {
 
         if (text.startsWith(value)) {
           setErrorIndex(null);
+          errorActiveRef.current = false;
         }
       }
       return;
@@ -597,11 +606,15 @@ export default function TypingCard({ studentId }) {
 
     const idx = value.length - 1;
     if (value[idx] !== text[idx] && value[idx] !== undefined) {
-      setErrorIndex(idx);
-      userInputRef.current = value;
-      setUserInputState(value);
-      return;
-    }
+  setErrorIndex(idx);
+
+  //  mark error active
+  errorActiveRef.current = true;
+
+  userInputRef.current = value;
+  setUserInputState(value);
+  return;
+}
 
     userInputRef.current = value;
     setUserInputState(value);

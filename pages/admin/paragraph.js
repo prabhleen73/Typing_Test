@@ -96,6 +96,13 @@ export default function ParagraphsPage() {
       setError("");
       alert("Paragraph saved successfully.");
     } catch (err) {
+      if (err.message.includes("Session expired")) {
+        alert("Session expired. Please login again.");
+        sessionStorage.clear();
+        window.location.href = "/admin-login";
+        return;
+      }
+
       setError(err.message || "Failed to save paragraph.");
     }
   };

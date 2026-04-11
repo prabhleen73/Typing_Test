@@ -14,7 +14,7 @@ export default function TestSettings() {
   const [sessionId, setSessionId] = useState("");
   const [wpm, setWpm] = useState("");
   const [kdph, setKdph] = useState("");
-  const [duration, setDuration] = useState("");
+  const [duration, setDuration] = useState(0);
   const [postName, setPostName] = useState("");
   const [examDate, setExamDate] = useState("");
 
@@ -34,15 +34,22 @@ export default function TestSettings() {
   /* Load session settings */
   useEffect(() => {
     if (settings) {
-      setWpm(settings.qualifyingWpm ?? "");
-      setKdph(settings.qualifyingKdph ?? "");
+      setWpm(settings.qualifyingWpm?.toString() ?? "");
+      setKdph(settings.qualifyingKdph?.toString() ?? "");
       setPostName(settings.postName ?? "");
-      setExamDate(
-        settings.examDate
-          ? setExamDate(settings.examDate || "")
-          : ""
-      );
+
+      if (settings.examDate) {
+        const date = new Date(settings.examDate);
+
+        // convert to local date (fix UTC issue)
+        date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+
+        setExamDate(date.toISOString().slice(0, 10));
+      } else {
+        setExamDate("");
+      }
     }
+
   }, [settings]);
 
   /* Load global duration */
@@ -59,8 +66,8 @@ export default function TestSettings() {
   const handleSave = async () => {
 
     if (!sessionId) return alert("Select session");
-    if (!wpm) return alert("Enter WPM");
-    if (!kdph) return alert("Enter KDPH");
+    if (!wpm || Number(wpm) <= 0) return alert("Enter WPM");
+    if (!kdph || Number(kdph) <= 0) return alert("Enter KDPH");
     if (!postName.trim()) return alert("Enter Post Name");
     if (!examDate) return alert("Select exam date");
 
@@ -72,7 +79,7 @@ export default function TestSettings() {
         sessionId,
         sessionName: selectedSession?.name || "",
         postName: postName.trim(),
-        examDate: examDate,
+        examDate: new Date(examDate + "T00:00:00").getTime(),
         qualifyingWpm: Number(wpm),
         qualifyingKdph: Number(kdph),
       });
@@ -114,7 +121,11 @@ export default function TestSettings() {
   }
 
   const isFormValid =
-    sessionId && wpm && kdph && postName.trim() && examDate;
+    sessionId &&
+    Number(wpm) > 0 &&
+    Number(kdph) > 0 &&
+    postName.trim() &&
+    examDate;
 
   const isTimeValid = duration && Number(duration) > 0;
 
@@ -154,9 +165,14 @@ export default function TestSettings() {
             <Label>Qualifying WPM</Label>
 
             <Input
-              type="number"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={wpm}
-              onChange={(e) => setWpm(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (/^\d*$/.test(val)) setWpm(val);
+              }}
             />
 
           </Field>
@@ -166,9 +182,14 @@ export default function TestSettings() {
             <Label>Qualifying KDPH</Label>
 
             <Input
-              type="number"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={kdph}
-              onChange={(e) => setKdph(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (/^\d*$/.test(val)) setKdph(val);
+              }}
             />
 
           </Field>
