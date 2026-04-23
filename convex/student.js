@@ -137,6 +137,8 @@ export const verifyStudent = mutation({
         token: newToken,
         expiresAt: newExpiresAt,
         sessionId: student.sessionId,
+        remainingSeconds: activeSession.remainingSeconds ?? null,
+
       };
     }
 

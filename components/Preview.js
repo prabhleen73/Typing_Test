@@ -1,105 +1,129 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useMemo } from "react";
 import styled from "styled-components";
 
-export default function Preview({ text, userInput, errorIndex, cursorIndex }) {
-  const scrollRef = useRef(null);
+function Preview({ text, userInput }) {
+  const containerRef = useRef(null);
   const cursorRef = useRef(null);
 
+  // ✅ split text only once
+  const characters = useMemo(() => text.split(""), [text]);
+
+  // ✅ scroll logic (optimized)
   useEffect(() => {
-    const container = scrollRef.current;
+    const container = containerRef.current;
     const cursor = cursorRef.current;
 
     if (!container || !cursor) return;
-    if (userInput.length === 0) return;
 
-    const style = window.getComputedStyle(container);
-    const lineHeight = parseInt(style.lineHeight);
-    const paddingTop = parseInt(style.paddingTop);
+    requestAnimationFrame(() => {
+      const containerRect = container.getBoundingClientRect();
+      const cursorRect = cursor.getBoundingClientRect();
 
-    const cursorTop = cursor.offsetTop - paddingTop;
-    const scrollTop = container.scrollTop;
-    const containerHeight = container.clientHeight;
+      const offsetTop =
+        cursorRect.top - containerRect.top + container.scrollTop;
 
-    const currentLine = Math.floor(cursorTop / lineHeight);
-    const visibleLines = Math.floor(containerHeight / lineHeight);
-    const firstVisibleLine = Math.floor(scrollTop / lineHeight);
-    const lastVisibleLine = firstVisibleLine + visibleLines - 1;
+      const containerHeight = container.clientHeight;
+      const targetScroll = offsetTop - containerHeight * 0.3;
 
-    // Only scroll if cursor goes beyond visible lines
-    if (currentLine > lastVisibleLine) {
-      container.scrollTop = (currentLine - visibleLines + 1) * lineHeight;
-    }
-  }, [cursorIndex, userInput]);
+      const maxScroll =
+        container.scrollHeight - container.clientHeight;
 
-  let globalIndex = 0;
+      const nextScroll = Math.max(
+        0,
+        Math.min(targetScroll, maxScroll)
+      );
 
-  const renderCharacter = (char) => {
-    const index = globalIndex++;
-    const typed = index < userInput.length;
-    const wrong = typed && userInput[index] !== char;
-    const isErrorCursor = index === errorIndex;
-    const isCursor = index === cursorIndex;
-
-    let bg = "transparent";
-    if (isErrorCursor) bg = "rgba(255,0,0,0.45)";
-    else if (wrong) bg = "rgba(255,0,0,0.25)";
-    else if (typed) bg = "rgba(0,180,0,0.20)";
-
-    return (
-      <span
-        key={index}
-        ref={isCursor ? cursorRef : null}
-        style={{
-          background: bg,
-          color: typed ? "#000" : "#555",
-        }}
-      >
-        {char}
-      </span>
-    );
-  };
+      // ✅ avoid unnecessary DOM updates
+      if (container.scrollTop !== nextScroll) {
+        container.scrollTop = nextScroll;
+      }
+    });
+  }, [userInput]);
 
   return (
-  <ParagraphWrapper ref={scrollRef}>
-    {text.split(/(\s+)/).map((segment, segmentIndex) => {
-      if (/^\s+$/.test(segment)) {
-        return (
-          <span key={segmentIndex}>
-            {segment.split("").map(renderCharacter)}
-          </span>
-        );
-      }
+    <Wrapper ref={containerRef}>
+      <Text>
+        {characters.map((char, index) => {
+          let status = "remaining";
 
-      return (
-        <Word key={segmentIndex}>
-          {segment.split("").map(renderCharacter)}
-        </Word>
-      );
-    })}
-  </ParagraphWrapper>
-);
+          if (index < userInput.length) {
+            status =
+              userInput[index] === char ? "correct" : "wrong";
+          }
+
+          return (
+            <MemoChar
+              key={index}
+              char={char}
+              status={status}
+              isCursor={index === userInput.length}
+              cursorRef={cursorRef}
+            />
+          );
+        })}
+      </Text>
+    </Wrapper>
+  );
 }
 
-/* Wrapper */
-const ParagraphWrapper = styled.div`
+/* =========================
+   🔥 MEMOIZED CHAR (KEY FIX)
+   ========================= */
+
+const MemoChar = React.memo(
+  ({ char, status, isCursor, cursorRef }) => {
+    return (
+      <Char
+        className={status}
+        ref={isCursor ? cursorRef : null}
+      >
+        {char}
+      </Char>
+    );
+  },
+  (prev, next) =>
+    prev.char === next.char &&
+    prev.status === next.status &&
+    prev.isCursor === next.isCursor
+);
+
+/* ===== Styles ===== */
+
+const Wrapper = styled.div`
   width: 100%;
   max-height: 260px;
-  background: #ffffff;
-  border-radius: 10px;
-  border: 2px solid #c8d3e3;
-  padding: 20px;
-
   overflow-y: auto;
-  overflow-x: hidden;
+  padding: 20px;
+  border: 2px solid #c8d3e3;
+  border-radius: 10px;
+  background: #fff;
 
-  white-space: pre-wrap;   /* preserve spaces + newlines */
+  font-family: monospace;
   font-size: 1.25rem;
   line-height: 1.6;
-  font-family: monospace;
-  text-align: left;
+
+  white-space: pre-wrap;
 `;
 
-/* Prevent word splitting */
-const Word = styled.span`
-  white-space: nowrap;
+const Text = styled.div`
+ display: flex;
+flex-wrap: wrap;
 `;
+
+const Char = styled.span`
+  white-space: pre;
+
+  &.correct {
+    background: rgba(0, 180, 0, 0.2);
+  }
+
+  &.wrong {
+    background: rgba(255, 0, 0, 0.3);
+  }
+
+  &.remaining {
+    color: #555;
+  }
+`;
+
+export default React.memo(Preview);

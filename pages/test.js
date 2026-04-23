@@ -110,16 +110,22 @@ export default function TestPage() {
       if (!exists) return router.replace("/login");
 
 
-      const attempted = await convex.query(api.results.hasAttempted, {
-        studentId: sid,
-        paragraphId: paragraph._id,
-      });
+      const paragraphId = sessionStorage.getItem("paragraphId");
 
-      if (attempted) {
-        await fetch("/api/logout", { method: "POST" });
-        router.replace("/already-attempted");
-        return;
-      }
+let attempted = false; //  declare here (global to function)
+
+if (paragraphId) {
+  attempted = await convex.query(api.results.hasAttempted, {
+    studentId: sid,
+    paragraphId,
+  });
+}
+
+if (attempted) {
+  await fetch("/api/logout", { method: "POST" });
+  router.replace("/already-attempted");
+  return;
+}
 
       if (session.testActive) {
         sessionStorage.setItem("studentId", sid);

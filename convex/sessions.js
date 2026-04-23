@@ -23,6 +23,8 @@ export const createSession = mutation({
       token,
       expiresAt,
       testActive: false,
+      remainingSeconds: null,  
+      updatedAt: Date.now(),
     });
 
     return { token, expiresAt };
@@ -65,7 +67,10 @@ export const updateTestActive = mutation({
 
     if (!session) return { success: false };
 
-    await ctx.db.patch(session._id, { testActive: active });
+    await ctx.db.patch(session._id, {
+  testActive: active,
+  updatedAt: Date.now(),
+});
 
     return { success: true };
   },
@@ -100,6 +105,29 @@ export const deleteSession = mutation({
       .first();
 
     if (session) await ctx.db.delete(session._id);
+
+    return { success: true };
+  },
+});
+
+export const updateRemainingTime = mutation({
+  args: {
+    token: v.string(),
+    remainingSeconds: v.number(),
+  },
+
+  handler: async (ctx, { token, remainingSeconds }) => {
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .first();
+
+    if (!session) return { success: false };
+
+    await ctx.db.patch(session._id, {
+      remainingSeconds,
+      updatedAt: Date.now(),
+    });
 
     return { success: true };
   },
