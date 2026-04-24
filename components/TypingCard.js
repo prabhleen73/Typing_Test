@@ -5,7 +5,6 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useRouter } from "next/router";
 
-// UI COMPONENTS -----------------------------
 const Loader = styled.div`
   text-align: center;
   padding: 1.5rem;
@@ -98,16 +97,49 @@ const StartButton = styled.button`
 `;
 
 const formatTime = (seconds) => {
-  const sec = Math.max(0, seconds ?? 0);
-  const minutes = Math.floor(sec / 60);
-  const remainingSeconds = sec % 60;
+  const safeSeconds = Math.max(0, seconds ?? 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
   return `${minutes}:${remainingSeconds < 10 ? "0" : ""}${remainingSeconds}`;
 };
 
-// COMPONENT --------------------------------
+const getSnapshotRemaining = (remainingSeconds, savedAt) => {
+  if (typeof remainingSeconds !== "number") return null;
+  if (typeof savedAt !== "number") return Math.max(0, remainingSeconds);
+  const elapsed = Math.max(0, Math.floor((Date.now() - savedAt) / 1000));
+  return Math.max(0, remainingSeconds - elapsed);
+};
+
+const getRemainingFromEndAt = (testEndsAt) => {
+  if (typeof testEndsAt !== "number") return null;
+  return Math.max(0, Math.ceil((testEndsAt - Date.now()) / 1000));
+};
+
+const parseStoredState = (raw) => {
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const getPersistedActiveSession = () => {
+  if (typeof window === "undefined") return null;
+  return parseStoredState(localStorage.getItem("activeTestSession"));
+};
+
+const shouldResetAfterClosedTab = () => {
+  if (typeof window === "undefined") return false;
+  const closedMarker = localStorage.getItem("closedTestSession");
+  if (!closedMarker) return false;
+  const navigationEntry = performance.getEntriesByType("navigation")?.[0];
+  return navigationEntry?.type !== "reload";
+};
+
 export default function TypingCard({ studentId }) {
   const router = useRouter();
- const startTimeRef = useRef(null);
   const [text, setText] = useState("");
   const [countDown, setCountDown] = useState(null);
   const [typingEnabled, setTypingEnabled] = useState(false);
@@ -117,165 +149,375 @@ export default function TypingCard({ studentId }) {
   const [userInputState, setUserInputState] = useState("");
   const [isActive, setIsActive] = useState(false);
   const [storedStudentId, setStoredStudentId] = useState(null);
-  const [studentName, setStudentName] = useState("");
-  const lastSaveTimeRef = useRef(0);
-  const hasRestoredRef = useRef(false);
-  const lastActiveSecondsRef = useRef(1);
-
   const [sessionId, setSessionId] = useState(null);
+  const [sessionToken, setSessionToken] = useState(null);
   const [draftRestored, setDraftRestored] = useState(false);
   const [testStep, setTestStep] = useState("instructions");
   const [agreed, setAgreed] = useState(false);
 
-  // REFS
   const paragraphIdRef = useRef(null);
   const textAreaRef = useRef(null);
   const userInputRef = useRef("");
-  const backspaceCountRef = useRef(0);
   const completionTimeRef = useRef(null);
   const intervalRef = useRef(null);
   const submittedRef = useRef(false);
   const draftSaveTimeoutRef = useRef(null);
   const correctedMistakesRef = useRef(0);
   const errorActiveRef = useRef(false);
-  const lastSavedRef = useRef("");
+  const hasRestoredRef = useRef(false);
+  const deadlineRef = useRef(null);
+  const savingRef = useRef(false);
+
+  const resolvedStudentId = studentId ?? storedStudentId ?? null;
+  const storageSuffix =
+    resolvedStudentId && sessionId ? `${resolvedStudentId}:${sessionId}` : null;
+  const localDraftKey = storageSuffix
+    ? `typingStateBackup:${storageSuffix}`
+    : "typingStateBackup";
 
   const paragraph = useQuery(
     api.paragraphs.getParagraph,
     sessionId ? { sessionId } : "skip"
   );
   const timeSetting = useQuery(api.timeSettings.getTimeSetting);
-  //const testSettings = useQuery(api.settings.getTestSettings, { sessionId });
   const testSettings = useQuery(
     api.settings.getTestSettings,
     sessionId ? { sessionId } : "skip"
   );
+  const draft = useQuery(
+    api.typingDrafts.getDraft,
+    resolvedStudentId && sessionId
+      ? { studentId: resolvedStudentId, sessionId }
+      : "skip"
+  );
+  const serverSession = useQuery(
+    api.sessions.validateSession,
+    sessionToken ? { token: sessionToken } : "skip"
+  );
+
   const qualifyingWpm = testSettings?.qualifyingWpm;
   const qualifyingKdph = testSettings?.qualifyingKdph;
 
   const saveResult = useMutation(api.results.saveResult);
   const saveDraft = useMutation(api.typingDrafts.saveDraft);
   const markSubmitted = useMutation(api.typingDrafts.markSubmitted);
-
-  // backend test active flag
   const updateTestActive = useMutation(api.sessions.updateTestActive);
-
   const updateRemainingTime = useMutation(api.sessions.updateRemainingTime);
-  const resolvedStudentId = studentId ?? storedStudentId ?? null;
-  // Save result helper
+
+  const getCurrentRemaining = useCallback(() => {
+    if (typeof countDown === "number") return Math.max(0, countDown);
+    if (deadlineRef.current) {
+      return Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000));
+    }
+    return timeSetting?.duration ?? 0;
+  }, [countDown, timeSetting?.duration]);
+
+  const syncErrorStateFromValue = useCallback(
+    (value) => {
+      const mismatchIndex = Array.from(value).findIndex(
+        (char, index) => char !== text[index]
+      );
+
+      if (mismatchIndex === -1) {
+        errorActiveRef.current = false;
+        setErrorIndex(null);
+        return;
+      }
+
+      errorActiveRef.current = true;
+      setErrorIndex(mismatchIndex);
+    },
+    [text]
+  );
+
+  const writeLocalState = useCallback(
+    (remainingOverride) => {
+      if (typeof window === "undefined") return;
+
+      const remainingSeconds =
+        typeof remainingOverride === "number"
+          ? Math.max(0, remainingOverride)
+          : getCurrentRemaining();
+
+      const payload = {
+        text: userInputRef.current,
+        paragraphId: paragraphIdRef.current,
+        started,
+        finished,
+        remainingSeconds,
+        savedAt: Date.now(),
+        testEndsAt:
+          typeof deadlineRef.current === "number"
+            ? deadlineRef.current
+            : (() => {
+                const stored = sessionStorage.getItem("testEndsAt");
+                return stored !== null && !Number.isNaN(Number(stored))
+                  ? Number(stored)
+                  : null;
+              })(),
+        testStartedAt:
+          (() => {
+            const stored = sessionStorage.getItem("testStartedAt");
+            return stored !== null && !Number.isNaN(Number(stored))
+              ? Number(stored)
+              : null;
+          })(),
+      };
+
+      sessionStorage.setItem("typingState", JSON.stringify(payload));
+      localStorage.setItem(localDraftKey, JSON.stringify(payload));
+      const persistedSession = getPersistedActiveSession() || {};
+      localStorage.setItem(
+        "activeTestSession",
+        JSON.stringify({
+          ...persistedSession,
+          studentId: resolvedStudentId ?? persistedSession.studentId ?? null,
+          sessionId: sessionId ?? persistedSession.sessionId ?? null,
+          token:
+            sessionToken ||
+            persistedSession.token ||
+            sessionStorage.getItem("token") ||
+            null,
+          testActive: started && !finished,
+          serverRemainingSeconds: remainingSeconds,
+          testEndsAt: payload.testEndsAt,
+          testStartedAt: payload.testStartedAt,
+        })
+      );
+
+      if (remainingSeconds > 0) {
+        sessionStorage.setItem("remainingTime", String(remainingSeconds));
+      } else {
+        sessionStorage.removeItem("remainingTime");
+      }
+    },
+    [finished, getCurrentRemaining, localDraftKey, started]
+  );
+
+  const persistProgress = useCallback(
+    async (remainingOverride) => {
+      const remainingSeconds =
+        typeof remainingOverride === "number"
+          ? Math.max(0, remainingOverride)
+          : getCurrentRemaining();
+
+      writeLocalState(remainingSeconds);
+
+      if (
+        !resolvedStudentId ||
+        !sessionId ||
+        !paragraphIdRef.current ||
+        !started ||
+        finished ||
+        submittedRef.current ||
+        savingRef.current
+      ) {
+        return;
+      }
+
+      savingRef.current = true;
+
+      try {
+        const token =
+          sessionToken ||
+          (typeof window !== "undefined"
+            ? sessionStorage.getItem("token")
+            : null);
+
+        if (!token) {
+          return;
+        }
+
+        const draftSaveResult = await saveDraft({
+          token,
+          studentId: resolvedStudentId,
+          sessionId,
+          paragraphId: paragraphIdRef.current,
+          typedText: userInputRef.current || "",
+          started: true,
+          duration: timeSetting?.duration || 0,
+          remainingSeconds,
+        });
+
+        if (draftSaveResult?.success === false) {
+          // Keep the test running locally even if a sync attempt fails.
+          // This prevents candidates from being thrown out mid-test because of
+          // a temporary session validation mismatch or network blip.
+          writeLocalState(remainingSeconds);
+          return;
+        }
+
+        if (typeof draftSaveResult?.testEndsAt === "number") {
+          sessionStorage.setItem("testEndsAt", String(draftSaveResult.testEndsAt));
+          const persistedSession = getPersistedActiveSession() || {};
+          localStorage.setItem(
+            "activeTestSession",
+            JSON.stringify({
+              ...persistedSession,
+              studentId: resolvedStudentId ?? persistedSession.studentId ?? null,
+              sessionId: sessionId ?? persistedSession.sessionId ?? null,
+              token:
+                sessionToken ||
+                persistedSession.token ||
+                sessionStorage.getItem("token") ||
+                null,
+              testActive: true,
+              serverRemainingSeconds:
+                draftSaveResult?.remainingSeconds ?? remainingSeconds,
+              testEndsAt: draftSaveResult.testEndsAt,
+              testStartedAt:
+                persistedSession.testStartedAt ??
+                (() => {
+                  const stored = sessionStorage.getItem("testStartedAt");
+                  return stored !== null && !Number.isNaN(Number(stored))
+                    ? Number(stored)
+                    : null;
+                })(),
+            })
+          );
+        }
+
+        await updateRemainingTime({
+          token,
+          remainingSeconds:
+            draftSaveResult?.remainingSeconds ?? remainingSeconds,
+        });
+      } finally {
+        savingRef.current = false;
+      }
+    },
+    [
+      finished,
+      getCurrentRemaining,
+      resolvedStudentId,
+      router,
+      saveDraft,
+      sessionToken,
+      sessionId,
+      started,
+      timeSetting?.duration,
+      updateRemainingTime,
+      writeLocalState,
+    ]
+  );
+
   const handleSaveResultToDB = useCallback(
     async ({ input, seconds }) => {
       const rawInput = input ?? userInputRef.current ?? "";
+      const normalizedInput = rawInput.replace(/\s+$/g, "");
 
-
-      // Calculate correct chars (STOP at first mistake)
       let correctChars = 0;
-
-      for (let i = 0; i < rawInput.length; i++) {
-        if (rawInput[i] === text[i]) {
-          correctChars++;
+      for (let i = 0; i < normalizedInput.length; i += 1) {
+        if (normalizedInput[i] === text[i]) {
+          correctChars += 1;
         } else {
           break;
         }
       }
 
-      //  Clean text (remove wrong part)
-      const finalInput = rawInput.slice(0, correctChars);
+      const fallbackMatchedChars =
+        correctChars === 0 && normalizedInput.length > 0
+          ? Math.max(
+              0,
+              Math.min(
+                normalizedInput.length,
+                text.startsWith(normalizedInput) ? normalizedInput.length : 0
+              )
+            )
+          : correctChars;
 
-
-      //  Total typed
-      const totalTyped = rawInput.length;
-
-      // Detect uncorrected mistake (EDGE CASE)
-      const hasUncorrectedError = correctChars < rawInput.length;
-
-      // Count corrections safely (avoid overcounting backspace spam)
+      const effectiveCorrectChars = Math.max(correctChars, fallbackMatchedChars);
+      const finalInput = normalizedInput.slice(0, effectiveCorrectChars);
+      const totalTyped = normalizedInput.length;
+      const hasUncorrectedError = effectiveCorrectChars < normalizedInput.length;
       const correctedMistakes = correctedMistakesRef.current;
-
-      // Only 1 uncorrected mistake possible in your system
       const uncorrectedMistakes = hasUncorrectedError ? 1 : 0;
-
       const mistakes = correctedMistakes + uncorrectedMistakes;
-
-      // Accuracy
       const safeMistakes = Math.min(mistakes, totalTyped);
 
       const accuracy =
         totalTyped === 0
           ? 0
           : Math.floor(((totalTyped - safeMistakes) / totalTyped) * 100);
-      // STEP 7: Time
-     const elapsed =
-  (timeSetting?.duration || 0) - (countDown || 0);
 
-const secondsTaken =
-  completionTimeRef.current ??
-  seconds ??
-  Math.max(5, elapsed); 
+      const secondsTaken =
+        seconds ??
+        completionTimeRef.current ??
+        Math.max(
+          1,
+          (timeSetting?.duration || 0) - Math.max(0, getCurrentRemaining())
+        );
 
-      //WPM
-      const rawWPM = Number(
-        ((correctChars * 60) / (5 * secondsTaken)).toFixed(2)
-      );
-
-      const wpm = Math.floor(rawWPM);
-
-      //KDPH
-      const kdph = Math.round((correctChars * 3600) / secondsTaken);
-
-      //Student ID
       let resolvedStudentIdLocal = studentId ?? storedStudentId ?? null;
-
       if (!resolvedStudentIdLocal && typeof window !== "undefined") {
         resolvedStudentIdLocal = sessionStorage.getItem("studentId");
       }
 
-      //SAVE RESULT
-      const resultId = await saveResult({
+      const rawWpm = Number(
+        ((effectiveCorrectChars * 60) / (5 * Math.max(1, secondsTaken))).toFixed(2)
+      );
+      const wpm = Math.floor(rawWpm);
+      const kdph = Math.round(
+        (effectiveCorrectChars * 3600) / Math.max(1, secondsTaken)
+      );
+
+      return saveResult({
         studentId: resolvedStudentIdLocal,
         paragraphId: paragraphIdRef.current,
-        symbols: correctChars,
+        symbols: effectiveCorrectChars,
         seconds: secondsTaken,
         accuracy,
         wpm,
-        rawWpm: rawWPM,
+        rawWpm,
         kdph,
         text: finalInput,
-        rawText: rawInput,
+        rawText: normalizedInput,
         mistakes,
         correctedMistakes,
         uncorrectedMistakes,
-
       });
-
-      return resultId;
     },
     [
+      getCurrentRemaining,
       saveResult,
       studentId,
       storedStudentId,
       text,
+      timeSetting?.duration,
     ]
   );
- // -------------------------------------------
-  // Auto submit
-  // -------------------------------------------
-  const doAutoSubmit = useCallback(async () => {
-  if (submittedRef.current) return;
-  submittedRef.current = true;
 
-  clearInterval(intervalRef.current);
-  setFinished(true);
-  setTypingEnabled(false);
+  const doAutoSubmit = useCallback(
+    async (forcedSeconds) => {
+      if (submittedRef.current) return;
+      submittedRef.current = true;
 
-    //  mark backend inactive
-    try {
-      const token = sessionStorage.getItem("token");
-      if (token) await updateTestActive({ token, active: false });
-    } catch { }
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      deadlineRef.current = null;
+      completionTimeRef.current =
+        forcedSeconds ??
+        completionTimeRef.current ??
+        (timeSetting?.duration || 0) - Math.max(0, getCurrentRemaining());
+
+      setCountDown(0);
+      setFinished(true);
+      setTypingEnabled(false);
+      setStarted(true);
+
+      try {
+        const token = sessionStorage.getItem("token");
+        if (token) {
+          await updateTestActive({ token, active: false });
+          await updateRemainingTime({ token, remainingSeconds: 0 });
+        }
+      } catch {}
+
+      writeLocalState(0);
 
       const resultId = await handleSaveResultToDB({
         input: userInputRef.current,
+        seconds: completionTimeRef.current,
       });
 
       if (resolvedStudentId && sessionId) {
@@ -285,579 +527,639 @@ const secondsTaken =
       sessionStorage.removeItem("testActive");
       sessionStorage.removeItem("typingState");
       sessionStorage.removeItem("instructionsAccepted");
-      localStorage.removeItem("remainingTime");
+      sessionStorage.removeItem("remainingTime");
+      localStorage.removeItem(localDraftKey);
+      localStorage.removeItem("activeTestSession");
 
       await fetch("/api/logout", { method: "POST" });
-    router.replace(`/test-submitted?resultId=${resultId}`);
-}, [
-  handleSaveResultToDB,
-  router,
-  resolvedStudentId,
-  sessionId,
-  markSubmitted,
-  updateTestActive,
-]);
-
-  const draft = useQuery(
-    api.typingDrafts.getDraft,
-    resolvedStudentId && sessionId
-      ? { studentId: resolvedStudentId, sessionId }
-      : "skip"
+      sessionStorage.setItem("submittedResultId", String(resultId));
+      sessionStorage.setItem(
+        "submittedPageExpiresAt",
+        String(Date.now() + 15 * 60 * 1000)
+      );
+      router.replace(`/test-submitted?resultId=${resultId}`);
+    },
+    [
+      getCurrentRemaining,
+      handleSaveResultToDB,
+      localDraftKey,
+      markSubmitted,
+      resolvedStudentId,
+      router,
+      sessionId,
+      timeSetting?.duration,
+      updateRemainingTime,
+      updateTestActive,
+      writeLocalState,
+    ]
   );
-  const startAccurateTimer = useCallback(() => {
-  clearInterval(intervalRef.current);
 
-  intervalRef.current = setInterval(() => {
-    setCountDown((prev) => {
-      if (prev === null || prev <= 0) return 0;
+  const startAccurateTimer = useCallback(
+    (initialRemaining) => {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
 
-      if (prev === 1) {
-        clearInterval(intervalRef.current);
-        doAutoSubmit();
-        return 0;
+      const remaining =
+        typeof initialRemaining === "number"
+          ? Math.max(0, initialRemaining)
+          : getCurrentRemaining();
+
+      if (remaining <= 0) {
+        doAutoSubmit(timeSetting?.duration || 0);
+        return;
       }
 
-      return prev - 1;
-    });
-  }, 1000);
-}, [doAutoSubmit]);
+      deadlineRef.current = Date.now() + remaining * 1000;
+      setCountDown(remaining);
 
-  useEffect(() => {
-  const handleUnload = () => {
-  if (countDown !== null && countDown > 0) {
-    localStorage.setItem("remainingTime", countDown);
-  }
+      intervalRef.current = setInterval(() => {
+        const nextRemaining = Math.max(
+          0,
+          Math.ceil((deadlineRef.current - Date.now()) / 1000)
+        );
 
-  };
+        setCountDown((prev) => (prev === nextRemaining ? prev : nextRemaining));
 
-  window.addEventListener("beforeunload", handleUnload);
-
-  return () => {
-    window.removeEventListener("beforeunload", handleUnload);
-  };
-}, [countDown]);
-
-
+        if (nextRemaining <= 0) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          completionTimeRef.current = timeSetting?.duration || 0;
+          doAutoSubmit(timeSetting?.duration || 0);
+        }
+      }, 250);
+    },
+    [doAutoSubmit, getCurrentRemaining, timeSetting?.duration]
+  );
 
   useEffect(() => {
     if (!textAreaRef.current) return;
 
-    const el = textAreaRef.current;
-
-    el.focus();
-
-    const len = userInputState.length;
-
-    //  always keep cursor at end (no middle editing)
-    if (el.selectionStart !== len) {
-      el.setSelectionRange(len, len);
+    const input = textAreaRef.current;
+    const caret = userInputState.length;
+    input.focus();
+    if (input.selectionStart !== caret) {
+      input.setSelectionRange(caret, caret);
     }
   }, [userInputState]);
 
   useEffect(() => {
-    const id = sessionStorage.getItem("sessionId");
-    setSessionId(id);
+    if (typeof window === "undefined") return;
+
+    const persistedSession = getPersistedActiveSession();
+    setStoredStudentId(
+      sessionStorage.getItem("studentId") || persistedSession?.studentId || null
+    );
+    setSessionId(
+      sessionStorage.getItem("sessionId") || persistedSession?.sessionId || null
+    );
+    setSessionToken(
+      sessionStorage.getItem("token") || persistedSession?.token || null
+    );
+    setIsActive(true);
+
+    if (sessionStorage.getItem("instructionsAccepted") === "true") {
+      setTestStep("test");
+    }
   }, []);
 
-  // -------------------------------------------
-  // Load sessionStorage values
-  // -------------------------------------------
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!started || finished) return;
+
+    writeLocalState();
+  }, [countDown, finished, started, userInputState, writeLocalState]);
+
+  useEffect(() => {
+    if (!started || finished) return;
+
+    const interval = setInterval(() => {
+      persistProgress();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [finished, persistProgress, started]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    setIsActive(sessionStorage.getItem("testActive") === "true");
+    const handlePageExit = () => {
+      if (!started || finished) return;
+      const token =
+        sessionToken || sessionStorage.getItem("token") || null;
+      localStorage.setItem(
+        "closedTestSession",
+        JSON.stringify({
+          token,
+          studentId: resolvedStudentId ?? sessionStorage.getItem("studentId"),
+          sessionId: sessionId ?? sessionStorage.getItem("sessionId"),
+        })
+      );
+      writeLocalState();
+      persistProgress();
+    };
 
-    const sid = sessionStorage.getItem("studentId");
-    if (sid) setStoredStudentId(sid);
+    const handleVisibility = () => {
+      if (document.hidden && started && !finished) {
+        writeLocalState();
+        persistProgress();
+      }
+    };
 
-    const storedName = sessionStorage.getItem("studentName");
-    if (storedName) setStudentName(storedName);
+    window.addEventListener("beforeunload", handlePageExit);
+    window.addEventListener("pagehide", handlePageExit);
+    document.addEventListener("visibilitychange", handleVisibility);
 
-    const sessId = sessionStorage.getItem("sessionId");
-    if (sessId) setSessionId(sessId);
+    return () => {
+      window.removeEventListener("beforeunload", handlePageExit);
+      window.removeEventListener("pagehide", handlePageExit);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [finished, persistProgress, started]);
 
-    const accepted = sessionStorage.getItem("instructionsAccepted");
-    if (accepted === "true") {
-      setTestStep("test");
-    }
-
+  useEffect(() => {
+    return () => {
+      clearInterval(intervalRef.current);
+      if (draftSaveTimeoutRef.current) {
+        clearTimeout(draftSaveTimeoutRef.current);
+      }
+    };
   }, []);
 
-
-  
-const backendTime = sessionStorage.getItem("remainingTime");
-
-if (backendTime && Number(backendTime) > 0) {
-  setCountDown(Number(backendTime));
-  hasRestoredRef.current = true;
-}
- 
-
-  // -------------------------------------------
-  // Restore logic
-  // -------------------------------------------
   useEffect(() => {
     if (hasRestoredRef.current) return;
     if (!paragraph || !paragraph._id || !timeSetting) return;
     if (typeof window === "undefined") return;
-
-
-
-const savedRemaining = localStorage.getItem("remainingTime");
-
-let initialTime = null;
-
-if (
-  savedRemaining !== null &&
-  !isNaN(savedRemaining) &&
-  Number(savedRemaining) > 0
-) {
-  initialTime = Number(savedRemaining);
-} else if (timeSetting?.duration) {
-  initialTime = timeSetting.duration;
-}
-
-if (initialTime !== null) {
-  setCountDown(initialTime);
-  hasRestoredRef.current = true;
-}
+    if (sessionToken && serverSession === undefined) return;
 
     const cleaned = (paragraph.content || "").replace(/^\s+|\uFEFF/g, "");
+    const persistedSession = getPersistedActiveSession();
+    const storedActive = sessionStorage.getItem("testActive") === "true";
     paragraphIdRef.current = paragraph._id;
-    sessionStorage.setItem("paragraphId", paragraph._id);
     setText(cleaned);
+    sessionStorage.setItem("paragraphId", paragraph._id);
 
-    const saved = sessionStorage.getItem("typingState");
-
-    // =========================
-    // RESTORE FROM SESSION
-    // =========================
-    if (saved) {
-      const s = JSON.parse(saved);
-
-      if (s.paragraphId === paragraph._id && cleaned.length > 5) {
-        setUserInputState(s.text);
-        userInputRef.current = s.text;
-
-
-  
-        setFinished(!!s.finished);
-        setErrorIndex(s.errorIndex ?? null);
-        backspaceCountRef.current = s.backspaces ?? 0;
-
-        if (
-  s.started &&
-  !s.finished &&
-  localStorage.getItem("remainingTime") !== null
-) {
-  setTypingEnabled(true);
-    setStarted(true); 
-
-
-  try {
-    const token = sessionStorage.getItem("token");
-    if (token) updateTestActive({ token, active: true });
-  } catch {}
-
-  startAccurateTimer();
-}
-        return;
-      }
-    }
-
-    // =========================
-    // RESTORE FROM DRAFT
-    // =========================
-    if (!saved && draft && !draft.isSubmitted && !draftRestored) {
-      if (draft.paragraphId === paragraph._id && cleaned.length > 15) {
-        setDraftRestored(true);
-
-        sessionStorage.setItem("testActive", "true");
-        setIsActive(true);
-
-        setUserInputState(draft.typedText || "");
-        userInputRef.current = draft.typedText || "";
-
-        const remainingSeconds =
-          typeof draft.remainingSeconds === "number"
-            ? draft.remainingSeconds
-            : timeSetting.duration;
-
-const savedRemaining = localStorage.getItem("remainingTime");
-
-if (savedRemaining !== null) {
-  setCountDown(Number(savedRemaining));
-} else {
-  setCountDown(remainingSeconds);
-}        if (errorIndex !== null) setErrorIndex(null);
-
-        // ✅ FIXED: no await
-        try {
-          const token = sessionStorage.getItem("token");
-          if (token) updateTestActive({ token, active: true });
-        } catch { }
-
-        if (draft.started && remainingSeconds <= 0) {
-          doAutoSubmit();
-          return;
-        }
-        
-         setStarted(!!draft.started);
- if (
-  draft.started &&
-  remainingSeconds > 0 &&
-  localStorage.getItem("remainingTime") !== null
-) {
-  setTypingEnabled(true);
-   setStarted(true);
-  startAccurateTimer();
-}
-        return;
-      }
-    }
-
-    
-
-  }, [
-    paragraph,
-    timeSetting,
-    doAutoSubmit,
-    draft,
-    draftRestored,
-    updateTestActive,
-  ]);
-
-
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      clearInterval(intervalRef.current);
-      if (draftSaveTimeoutRef.current) clearTimeout(draftSaveTimeoutRef.current);
-    };
-  }, []);
-  useEffect(() => {
-    if (!resolvedStudentId || !sessionId) return;
-    if (!started || finished) return;
-
-    const interval = setInterval(() => {
-      saveDraft({
-        studentId: resolvedStudentId,
-        sessionId,
-        paragraphId: paragraphIdRef.current,
-        typedText: userInputRef.current || "",
-        started: true,
-        duration: timeSetting?.duration || 0,
-        remainingSeconds: countDown || 0,
-      });
-    }, 60000); // 1 min
-
-    return () => clearInterval(interval);
-  }, [started, finished, countDown, timeSetting]);
-
-  // -------------------------------------------
-// SAVE TYPING STATE
-// -------------------------------------------
-useEffect(() => {
-  if (!started || finished) return;
-
-  sessionStorage.setItem(
-    "typingState",
-    JSON.stringify({
-      text: userInputRef.current,
-      paragraphId: paragraphIdRef.current,
-      started,
-      finished,
-    })
-  );
-}, [userInputState, started, finished]);
-
-// -------------------------------------------
-// 🔥 ADD THIS (PAUSE TIMER ON TAB CHANGE)
-// -------------------------------------------
-useEffect(() => {
-  const handleVisibility = () => {
-    if (document.hidden) {
-  clearInterval(intervalRef.current);
-
-  if (countDown > 0) {
-    localStorage.setItem("remainingTime", countDown);
-  }
-
-  // 🔥 ADD THIS PART
-  const token = sessionStorage.getItem("token");
-  if (token && countDown > 0) {
-    const token = sessionStorage.getItem("token");
-if (token) {
-  updateRemainingTime({
-    token,
-    remainingSeconds: countDown,
-  });
-}
-  }
-} else {
-      if (started && !finished && countDown > 0) {
-  startAccurateTimer();
-
-      }
-    }
-  };
-
-  document.addEventListener("visibilitychange", handleVisibility);
-
-  return () =>
-    document.removeEventListener("visibilitychange", handleVisibility);
-}, [started, finished, countDown, startAccurateTimer]);
-
-// Render
-  // -------------------------------------------
-  // Start timer
-  // -------------------------------------------
-  const startTimer = useCallback(async () => {
-    localStorage.removeItem("remainingTime");
-    if (started) return;
-
-    setCountDown(timeSetting.duration);
-        
-
-    completionTimeRef.current = null;
-
-setStarted(true);
-
-const now = Date.now();
-startTimeRef.current = now;
-localStorage.setItem("testStartTime", now);
-    setTypingEnabled(true);
-    submittedRef.current = false;
-    //  Auto focus typing area
-    setTimeout(() => {
-      textAreaRef.current?.focus();
-    }, 0);
-
-    //mark backend ACTIVE
-    try {
-      const token = sessionStorage.getItem("token");
-      if (token) await updateTestActive({ token, active: true });
-    } catch { }
-
-    // save first draft immediately
-    const sessId = sessionStorage.getItem("sessionId");
-    const sid =
-      studentId ?? storedStudentId ?? sessionStorage.getItem("studentId");
-
-    
-    if (sid && sessId && paragraphIdRef.current) {
-
-
-
-      saveDraft({
-        studentId: sid,
-        sessionId: sessId,
-        paragraphId: paragraphIdRef.current,
-        typedText: userInputRef.current || "",
-        started: true,
-        duration: timeSetting?.duration || 0,
-remainingSeconds: countDown,
-      });
-    }
-    const token = sessionStorage.getItem("token");
-if (token) {
-  updateRemainingTime({
-    token,
-    remainingSeconds: countDown,
-  });
-
-}
-
-    clearInterval(intervalRef.current);
-
-
-    startAccurateTimer();
-console.log("clicked start, started =", started);
-
-
-  }, [
-    started,
-    timeSetting,
-    doAutoSubmit,
-    saveDraft,
-    studentId,
-    storedStudentId,
-    updateTestActive,
-  ]);
-
-
-
-  const onUserInputChange = useCallback((e) => {
-    if (!isActive || finished) return;
-    if (!typingEnabled) return;
-
-    const value = e.target.value;
-    const prevValue = userInputRef.current;
-
-    if (errorActiveRef.current && value.length > prevValue.length) {
-    return;
-  }
-
-    // =========================
-    // 🔥 STRICT BACKSPACE CONTROL
-    // =========================
-    if (value.length < prevValue.length) {
-      // ❌ block backspace if no error
-      if (!errorActiveRef.current) {
-        return;
-      }
-
-      // ❌ allow ONLY single character deletion
-      if (value.length !== prevValue.length - 1) {
-        return;
-      }
-
-      const newValue = value;
-
-      userInputRef.current = newValue;
-      setUserInputState(newValue);
-
-      // ✅ check if error is fixed
-      if (text.startsWith(newValue)) {
-        if (errorIndex !== null) setErrorIndex(null);
-        errorActiveRef.current = false;
-
-        correctedMistakesRef.current += 1;
-      }
-
+    if (shouldResetAfterClosedTab()) {
+      userInputRef.current = "";
+      correctedMistakesRef.current = 0;
+      errorActiveRef.current = false;
+      deadlineRef.current = null;
+      sessionStorage.removeItem("testActive");
+      sessionStorage.removeItem("typingState");
+      sessionStorage.removeItem("remainingTime");
+      sessionStorage.removeItem("testEndsAt");
+      sessionStorage.removeItem("testStartedAt");
+      sessionStorage.removeItem("serverRemainingSeconds");
+      localStorage.removeItem(localDraftKey);
+      localStorage.removeItem("activeTestSession");
+      localStorage.removeItem("closedTestSession");
+      setUserInputState("");
+      setDraftRestored(false);
+      setStarted(false);
+      setFinished(false);
+      setTypingEnabled(false);
+      setErrorIndex(null);
+      setCountDown(timeSetting.duration || 0);
+      hasRestoredRef.current = true;
       return;
     }
 
+    const duration = timeSetting.duration || 0;
+    const clientState = parseStoredState(sessionStorage.getItem("typingState"));
+    const localState = parseStoredState(localStorage.getItem(localDraftKey));
+    const storedServerRemainingRaw = sessionStorage.getItem("serverRemainingSeconds");
+    const storedTestEndsAtRaw = sessionStorage.getItem("testEndsAt");
+    const storedServerRemaining =
+      storedServerRemainingRaw !== null && !Number.isNaN(Number(storedServerRemainingRaw))
+        ? Number(storedServerRemainingRaw)
+        : null;
+    const storedTestEndsAt =
+      storedTestEndsAtRaw !== null && !Number.isNaN(Number(storedTestEndsAtRaw))
+        ? Number(storedTestEndsAtRaw)
+        : null;
+    const textSnapshots = [];
 
-
-    if (value.length > text.length) return;
-
-    // =========================
-    // 🔒 STRICT ERROR LOCK
-    // =========================
-    if (errorIndex !== null) {
-      return; // ❌ cannot type forward until error fixed
+    if (clientState && clientState.paragraphId === paragraph._id) {
+      textSnapshots.push({
+        source: "session",
+        text: clientState.text || "",
+        started: !!clientState.started,
+        finished: !!clientState.finished,
+        savedAt: clientState.savedAt ?? 0,
+      });
     }
 
-    const idx = value.length - 1;
-
-    // =========================
-    // ❌ WRONG CHARACTER
-    // =========================
-    if (value[idx] !== text[idx] && value[idx] !== undefined) {
-  const safeValue = value.slice(0, idx + 1);
-
-  errorActiveRef.current = true;
-  setErrorIndex(idx);
-
-  userInputRef.current = safeValue;
-  setUserInputState(safeValue);
-
-  return;
-}
-
-    // =========================
-    // ✅ CORRECT INPUT
-    // =========================
-    userInputRef.current = value;
-setUserInputState(value); // only for UI
-
-const elapsed =
-  (timeSetting?.duration || 0) - (countDown || 0);
-
-lastActiveSecondsRef.current = Math.max(5, elapsed);
-    if (errorIndex !== null) setErrorIndex(null);
-
-    // =========================
-    // 💾 SAVE LOGIC (UNCHANGED)
-    // =========================
-    if (draftSaveTimeoutRef.current) {
-      clearTimeout(draftSaveTimeoutRef.current);
+    if (localState && localState.paragraphId === paragraph._id) {
+      textSnapshots.push({
+        source: "local",
+        text: localState.text || "",
+        started: !!localState.started,
+        finished: !!localState.finished,
+        savedAt: localState.savedAt ?? 0,
+      });
     }
 
-    draftSaveTimeoutRef.current = setTimeout(() => {
-      if (!resolvedStudentId || !sessionId) return;
-      if (!paragraphIdRef.current) return;
-      if (!started || finished) return;
+    if (
+      draft &&
+      !draft.isSubmitted &&
+      draft.paragraphId === paragraph._id &&
+      draft.updatedAt
+    ) {
+      textSnapshots.push({
+        source: "server",
+        text: draft.typedText || "",
+        started: !!draft.started,
+        finished: false,
+        savedAt: draft.updatedAt,
+      });
+    }
 
-      const safeRemainingSeconds =
-        typeof countDown === "number"
-          ? countDown
-          : timeSetting?.duration || 0;
+    textSnapshots.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+    const bestSnapshot = textSnapshots[0] ?? null;
 
-      if (value === lastSavedRef.current) return;
+    const localRemainingCandidates = [
+      getRemainingFromEndAt(draft?.testEndsAt),
+      getRemainingFromEndAt(clientState?.testEndsAt),
+      getSnapshotRemaining(clientState?.remainingSeconds, clientState?.savedAt),
+      getRemainingFromEndAt(localState?.testEndsAt),
+      getSnapshotRemaining(localState?.remainingSeconds, localState?.savedAt),
+      getRemainingFromEndAt(storedTestEndsAt),
+      getSnapshotRemaining(draft?.remainingSeconds, draft?.updatedAt),
+    ].filter((value) => typeof value === "number");
 
-      const now = Date.now();
-      if (now - lastSaveTimeRef.current < 2000) return;
-      lastSaveTimeRef.current = now;
+    const serverRemaining =
+      serverSession?.valid && typeof serverSession?.remainingSeconds === "number"
+        ? serverSession.remainingSeconds
+        : null;
+    const exactClosedTabRemaining =
+      !clientState &&
+      localState &&
+      localState.paragraphId === paragraph._id &&
+      localState.started &&
+      !localState.finished &&
+      typeof localState.remainingSeconds === "number"
+        ? Math.max(0, localState.remainingSeconds)
+        : null;
+    const authoritativeRemaining =
+      exactClosedTabRemaining ??
+      getRemainingFromEndAt(serverSession?.testEndsAt) ??
+      serverRemaining;
+    const restoredRemaining = Math.min(
+      duration,
+      Math.max(
+        0,
+        authoritativeRemaining ??
+          localRemainingCandidates[0] ??
+          storedServerRemaining ??
+          duration
+      )
+    );
+    const hasActiveResumeSignal =
+      storedActive ||
+      persistedSession?.testActive === true ||
+      typeof exactClosedTabRemaining === "number";
+    const shouldResumeFromServer =
+      (serverSession?.valid && serverSession?.testActive) ||
+      (hasActiveResumeSignal && draft?.started && !draft?.isSubmitted);
 
-      lastSavedRef.current = value;
+    if (bestSnapshot) {
+      userInputRef.current = bestSnapshot.text;
+      setUserInputState(bestSnapshot.text);
+      setDraftRestored(bestSnapshot.source === "server");
+      setStarted(bestSnapshot.started || shouldResumeFromServer);
+      setFinished(bestSnapshot.finished);
+      correctedMistakesRef.current = 0;
+      syncErrorStateFromValue(bestSnapshot.text);
+      setCountDown(restoredRemaining);
 
+      const shouldResume =
+        shouldResumeFromServer ||
+        (hasActiveResumeSignal && bestSnapshot.started && !bestSnapshot.finished);
 
-     const remaining = Math.max(0, safeRemainingSeconds);
+      if (shouldResume && !bestSnapshot.finished) {
+        sessionStorage.setItem("testActive", "true");
+        if (typeof draft?.testEndsAt === "number") {
+          sessionStorage.setItem("testEndsAt", String(draft.testEndsAt));
+        }
 
-saveDraft({
-  studentId: resolvedStudentId,
-  sessionId,
-  paragraphId: paragraphIdRef.current,
-  typedText: value,
-  started: true,
-  duration: timeSetting?.duration || 0,
-  remainingSeconds: remaining,
-});
+        if (restoredRemaining <= 0) {
+          hasRestoredRef.current = true;
+          doAutoSubmit(duration);
+          return;
+        }
 
-// 🔥 ADD THIS (YOU MISSED THIS)
-const token = sessionStorage.getItem("token");
-if (token) {
- const token = sessionStorage.getItem("token");
-if (token) {
-  updateRemainingTime({
-    token,
-    remainingSeconds: countDown,
-  });
-}
-}
+        setTypingEnabled(true);
+        startAccurateTimer(restoredRemaining);
 
+        void (async () => {
+          try {
+            const token = sessionToken || sessionStorage.getItem("token");
+            if (token) {
+              const sessionUpdate = await updateTestActive({
+                token,
+                active: true,
+                duration,
+                resumeRemainingSeconds:
+                  typeof exactClosedTabRemaining === "number"
+                    ? restoredRemaining
+                    : undefined,
+              });
 
-    }, 1500);
+              if (typeof sessionUpdate?.testEndsAt === "number") {
+                sessionStorage.setItem(
+                  "testEndsAt",
+                  String(sessionUpdate.testEndsAt)
+                );
+                const persistedSessionState = getPersistedActiveSession() || {};
+                localStorage.setItem(
+                  "activeTestSession",
+                  JSON.stringify({
+                    ...persistedSessionState,
+                    studentId:
+                      resolvedStudentId ?? persistedSessionState.studentId ?? null,
+                    sessionId: sessionId ?? persistedSessionState.sessionId ?? null,
+                    token:
+                      sessionToken ||
+                      persistedSessionState.token ||
+                      sessionStorage.getItem("token") ||
+                      null,
+                    testActive: true,
+                    serverRemainingSeconds:
+                      sessionUpdate?.remainingSeconds ?? restoredRemaining,
+                    testEndsAt: sessionUpdate.testEndsAt,
+                    testStartedAt:
+                      sessionUpdate?.testStartedAt ??
+                      persistedSessionState.testStartedAt ??
+                      null,
+                  })
+                );
+              }
+            }
+          } catch {}
+        })();
+      }
+    } else {
+      setCountDown(duration);
+      userInputRef.current = "";
+      setUserInputState("");
+      syncErrorStateFromValue("");
 
+      if (shouldResumeFromServer) {
+        setStarted(true);
+        setFinished(false);
+        setTypingEnabled(true);
+        setCountDown(restoredRemaining);
+        sessionStorage.setItem("testActive", "true");
+        if (typeof draft?.testEndsAt === "number") {
+          sessionStorage.setItem("testEndsAt", String(draft.testEndsAt));
+        }
+
+        if (restoredRemaining <= 0) {
+          hasRestoredRef.current = true;
+          doAutoSubmit(duration);
+          return;
+        }
+
+        startAccurateTimer(restoredRemaining);
+
+        void (async () => {
+          try {
+            const token = sessionToken || sessionStorage.getItem("token");
+            if (token) {
+              const sessionUpdate = await updateTestActive({
+                token,
+                active: true,
+                duration,
+                resumeRemainingSeconds:
+                  typeof exactClosedTabRemaining === "number"
+                    ? restoredRemaining
+                    : undefined,
+              });
+
+              if (typeof sessionUpdate?.testEndsAt === "number") {
+                sessionStorage.setItem(
+                  "testEndsAt",
+                  String(sessionUpdate.testEndsAt)
+                );
+                const persistedSessionState = getPersistedActiveSession() || {};
+                localStorage.setItem(
+                  "activeTestSession",
+                  JSON.stringify({
+                    ...persistedSessionState,
+                    studentId:
+                      resolvedStudentId ?? persistedSessionState.studentId ?? null,
+                    sessionId: sessionId ?? persistedSessionState.sessionId ?? null,
+                    token:
+                      sessionToken ||
+                      persistedSessionState.token ||
+                      sessionStorage.getItem("token") ||
+                      null,
+                    testActive: true,
+                    serverRemainingSeconds:
+                      sessionUpdate?.remainingSeconds ?? restoredRemaining,
+                    testEndsAt: sessionUpdate.testEndsAt,
+                    testStartedAt:
+                      sessionUpdate?.testStartedAt ??
+                      persistedSessionState.testStartedAt ??
+                      null,
+                  })
+                );
+              }
+            }
+          } catch {}
+        })();
+      }
+    }
+
+    hasRestoredRef.current = true;
   }, [
-    text,
-    started,
-    finished,
-    isActive,
-    typingEnabled,
-    errorIndex,
-    sessionId,
-    resolvedStudentId,
-    countDown,
-    timeSetting
+    doAutoSubmit,
+    draft,
+      localDraftKey,
+      paragraph,
+      serverSession,
+      sessionToken,
+      startAccurateTimer,
+      timeSetting,
+      updateTestActive,
   ]);
 
-  // Render
+  const startTimer = useCallback(async () => {
+    if (started || !timeSetting?.duration) return;
+
+    if (typeof document !== "undefined" && !document.fullscreenElement) {
+      try {
+        await document.documentElement.requestFullscreen();
+        sessionStorage.setItem("fsReady", "true");
+      } catch {
+        window.alert(
+          "Fullscreen is required to start the test. Please allow fullscreen and try again."
+        );
+        return;
+      }
+    }
+
+    const initialRemaining = timeSetting.duration;
+    let effectiveRemaining = initialRemaining;
+    completionTimeRef.current = null;
+    submittedRef.current = false;
+    correctedMistakesRef.current = 0;
+    errorActiveRef.current = false;
+    setErrorIndex(null);
+    setStarted(true);
+    setFinished(false);
+    setTypingEnabled(true);
+    setCountDown(initialRemaining);
+    sessionStorage.setItem("testActive", "true");
+
+    try {
+      const token = sessionToken || sessionStorage.getItem("token");
+      if (token) {
+        const sessionUpdate = await updateTestActive({
+          token,
+          active: true,
+          duration: initialRemaining,
+        });
+
+        if (typeof sessionUpdate?.remainingSeconds === "number") {
+          effectiveRemaining = sessionUpdate.remainingSeconds;
+          sessionStorage.setItem(
+            "serverRemainingSeconds",
+            String(sessionUpdate.remainingSeconds)
+          );
+        }
+        if (typeof sessionUpdate?.testEndsAt === "number") {
+          sessionStorage.setItem("testEndsAt", String(sessionUpdate.testEndsAt));
+        }
+        if (typeof sessionUpdate?.testStartedAt === "number") {
+          sessionStorage.setItem(
+            "testStartedAt",
+            String(sessionUpdate.testStartedAt)
+          );
+        }
+
+      }
+    } catch {}
+
+    startAccurateTimer(effectiveRemaining);
+    writeLocalState(effectiveRemaining);
+    await persistProgress(effectiveRemaining);
+
+    setTimeout(() => {
+      textAreaRef.current?.focus();
+    }, 0);
+  }, [
+    persistProgress,
+    sessionToken,
+    started,
+    startAccurateTimer,
+    timeSetting?.duration,
+    updateTestActive,
+    writeLocalState,
+    syncErrorStateFromValue,
+  ]);
+
+  const onUserInputChange = useCallback(
+    (e) => {
+      if (!isActive || finished || !typingEnabled) return;
+
+      let value = e.target.value;
+      const prevValue = userInputRef.current;
+
+      if (errorActiveRef.current && value.length > prevValue.length) return;
+      if (value.length > text.length) return;
+
+      if (value.length < prevValue.length) {
+        if (!errorActiveRef.current) return;
+        if (value.length !== prevValue.length - 1) return;
+
+        userInputRef.current = value;
+        setUserInputState(value);
+
+        if (text.startsWith(value)) {
+          setErrorIndex(null);
+          errorActiveRef.current = false;
+          correctedMistakesRef.current += 1;
+        }
+      } else {
+        if (errorActiveRef.current) return;
+        if (value.length > prevValue.length + 1) {
+          value = value.slice(0, prevValue.length + 1);
+        }
+
+        const index = value.length - 1;
+        if (value[index] !== text[index] && value[index] !== undefined) {
+          const safeValue = prevValue + value.slice(prevValue.length, prevValue.length + 1);
+          errorActiveRef.current = true;
+          setErrorIndex(index);
+          userInputRef.current = safeValue;
+          setUserInputState(safeValue);
+          return;
+        }
+
+        userInputRef.current = value;
+        setUserInputState(value);
+        setErrorIndex(null);
+      }
+
+      if (draftSaveTimeoutRef.current) {
+        clearTimeout(draftSaveTimeoutRef.current);
+      }
+
+      draftSaveTimeoutRef.current = setTimeout(() => {
+        persistProgress();
+      }, 800);
+    },
+    [finished, isActive, persistProgress, text, typingEnabled]
+  );
+
+  const onUserInputKeyDown = useCallback((e) => {
+    if (
+      e.key === "ArrowLeft" ||
+      e.key === "ArrowRight" ||
+      e.key === "ArrowUp" ||
+      e.key === "ArrowDown"
+    ) {
+      e.preventDefault();
+      return;
+    }
+
+    if (!errorActiveRef.current) return;
+
+    const allowedWhileError = new Set([
+      "Backspace",
+      "Tab",
+      "Shift",
+      "Control",
+      "Alt",
+      "Meta",
+      "CapsLock",
+    ]);
+
+    if (allowedWhileError.has(e.key)) return;
+    if (e.ctrlKey || e.metaKey) return;
+
+    e.preventDefault();
+  }, []);
+
   if (!studentId && !storedStudentId) return <Loader>Loading...</Loader>;
   if (!paragraph || !timeSetting) return <Loader>Loading test...</Loader>;
   if (countDown === null) return <Loader>Preparing...</Loader>;
 
-  // ✅ Instructions Screen
   if (testStep === "instructions") {
     return (
       <OuterWrapper>
         <TypingCardContainer>
           <Title>Typing Test Instructions</Title>
 
-          {/* Instructions */}
           <div style={{ lineHeight: "1.8", fontSize: "16px" }}>
-            <p>• Do not touch mouse once test starts.</p>
-            <p>• Do not refresh the page.</p>
-            <p>• Do not press back button.</p>
-            <p>• Do not switch tabs or minimize the browser.</p>
-            <p>• Copy/Paste is strictly prohibited.</p>
-            <p>• The test will auto-submit when time ends.</p>
+            <p>- Do not touch mouse once test starts.</p>
+            <p>- Do not refresh the page.</p>
+            <p>- Do not press back button.</p>
+            <p>- Do not switch tabs or minimize the browser.</p>
+            <p>- Copy/Paste is strictly prohibited.</p>
+            <p>- The test will auto-submit when time ends.</p>
           </div>
 
-          {/*  Information Section MUST BE HERE */}
           <div
             style={{
               marginTop: "25px",
@@ -867,16 +1169,18 @@ if (token) {
               border: "1px solid #c7ddff",
             }}
           >
-            <p><strong>Test Information:</strong></p>
-            <p>• Minimum Speed: {qualifyingWpm || 30} WPM</p>
-            <p>• Minimum KDPH: {qualifyingKdph || 10000}</p>
             <p>
-              • Duration: {Math.round((timeSetting?.duration || 0) / 60)} minute(s)
+              <strong>Test Information:</strong>
             </p>
-            <p>• Paragraph will be displayed on screen.</p>
-            <p>• Accuracy, WPM and KDPH will be calculated.</p>
-            <p>• Mistakes must be corrected with backspace to proceed.</p>
-            <p>• Your progress is saved automatically.</p>
+            <p>- Minimum Speed: {qualifyingWpm || 30} WPM</p>
+            <p>- Minimum KDPH: {qualifyingKdph || 10000}</p>
+            <p>
+              - Duration: {Math.round((timeSetting?.duration || 0) / 60)} minute(s)
+            </p>
+            <p>- Paragraph will be displayed on screen.</p>
+            <p>- Accuracy, WPM and KDPH will be calculated.</p>
+            <p>- Mistakes must be corrected with backspace to proceed.</p>
+            <p>- Your progress is saved automatically.</p>
           </div>
 
           <Centered style={{ marginTop: "25px" }}>
@@ -889,7 +1193,6 @@ if (token) {
     );
   }
 
-  //  Declaration Screen
   if (testStep === "declaration") {
     return (
       <OuterWrapper>
@@ -897,9 +1200,9 @@ if (token) {
           <Title>Declaration</Title>
 
           <p style={{ lineHeight: "1.8", fontSize: "16px" }}>
-            I hereby declare that I will attempt this typing test honestly
-            and will not use any unfair means. I understand that violation
-            of rules may lead to disqualification.
+            I hereby declare that I will attempt this typing test honestly and
+            will not use any unfair means. I understand that violation of rules
+            may lead to disqualification.
           </p>
 
           <div style={{ marginTop: "20px" }}>
@@ -922,7 +1225,7 @@ if (token) {
               }}
               onClick={() => {
                 sessionStorage.setItem("instructionsAccepted", "true");
-                router.push("/start-test");
+                setTestStep("test");
               }}
             >
               Agree & Continue
@@ -933,63 +1236,43 @@ if (token) {
     );
   }
 
-  if (testStep === "test") {
-    return (
-      <OuterWrapper>
-        <TypingCardContainer>
-          <Header>
-            <Title>Typing Test</Title>
-            <Timer urgent={countDown <= 10}>{formatTime(countDown)}</Timer>
-          </Header>
+  return (
+    <OuterWrapper>
+      <TypingCardContainer>
+        <Header>
+          <Title>Typing Test</Title>
+          <Timer urgent={countDown <= 10}>{formatTime(countDown)}</Timer>
+        </Header>
 
-          <TypingPanel>
-            <Preview
-              text={text}
-              userInput={userInputState}
-            />
+        <TypingPanel>
+          <Preview text={text} userInput={userInputState} />
 
-            <TextArea
-              ref={textAreaRef}
-              value={userInputState}
-              onChange={onUserInputChange}
-              readOnly={!typingEnabled || finished || !isActive}
-              placeholder={"Please click on start button to start the test."}
+          <TextArea
+            ref={textAreaRef}
+            value={userInputState}
+            onChange={onUserInputChange}
+            readOnly={!typingEnabled || finished || !isActive}
+            placeholder="Please click on start button to start the test."
+            onPaste={(e) => e.preventDefault()}
+            onCopy={(e) => e.preventDefault()}
+            onCut={(e) => e.preventDefault()}
+            onKeyDown={onUserInputKeyDown}
+            onClick={(e) => {
+              const input = e.target;
+              const caret = input.value.length;
+              if (input.selectionStart !== caret) {
+                input.setSelectionRange(caret, caret);
+              }
+            }}
+          />
+        </TypingPanel>
 
-              onPaste={(e) => e.preventDefault()}
-              onCopy={(e) => e.preventDefault()}
-              onCut={(e) => e.preventDefault()}
-
-              /*  ADD THIS */
-              onKeyDown={(e) => {
-                if (
-                  e.key === "ArrowLeft" ||
-                  e.key === "ArrowRight" ||
-                  e.key === "ArrowUp" ||
-                  e.key === "ArrowDown"
-                ) {
-                  e.preventDefault();
-                }
-              }}
-
-              /*  ADD THIS */
-              onClick={(e) => {
-                const el = e.target;
-                const len = el.value.length;
-                if (el.selectionStart !== len) {
-                  el.setSelectionRange(len, len);
-                }
-              }}
-            />
-          </TypingPanel>
-
-         {!started && !finished && (
-            <Centered>
-              <StartButton onClick={startTimer}>Start Test</StartButton>
-            </Centered>
-          )}
-        </TypingCardContainer>
-      </OuterWrapper>
-    );
-  }
-  return null;
+        {!started && !finished && (
+          <Centered>
+            <StartButton onClick={startTimer}>Start Test</StartButton>
+          </Centered>
+        )}
+      </TypingCardContainer>
+    </OuterWrapper>
+  );
 }

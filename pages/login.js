@@ -1,52 +1,118 @@
-import { useState, useEffect } from "react";
-import { useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
-import { ConvexReactClient } from "convex/react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import styled from "styled-components";
 import Image from "next/image";
 
+function sanitizeCredential(value) {
+  return value
+    ?.toString()
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim();
+}
 
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL);
+function clearPersistedTestState() {
+  if (typeof window === "undefined") return;
+
+  const sessionKeys = [
+    "studentId",
+    "sessionId",
+    "studentName",
+    "token",
+    "testActive",
+    "typingState",
+    "remainingTime",
+    "paragraphId",
+    "instructionsAccepted",
+    "testEndsAt",
+    "testStartedAt",
+    "serverRemainingSeconds",
+    "testSubmitted",
+  ];
+
+  for (const key of sessionKeys) {
+    sessionStorage.removeItem(key);
+  }
+
+  const localKeysToDelete = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (key === "activeTestSession" || key.startsWith("typingStateBackup:")) {
+      localKeysToDelete.push(key);
+    }
+  }
+
+  for (const key of localKeysToDelete) {
+    localStorage.removeItem(key);
+  }
+
+}
+
+async function resetClosedTestIfNeeded() {
+  if (typeof window === "undefined") return;
+
+  const closedMarkerRaw = localStorage.getItem("closedTestSession");
+  if (!closedMarkerRaw) return;
+
+  const navigationEntry = performance.getEntriesByType("navigation")?.[0];
+  const navigationType = navigationEntry?.type;
+  if (navigationType === "reload") {
+    localStorage.removeItem("closedTestSession");
+    return;
+  }
+
+  const marker = JSON.parse(closedMarkerRaw);
+  try {
+    await fetch("/api/reset-closed-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(marker),
+    });
+  } catch {}
+
+  clearPersistedTestState();
+  localStorage.removeItem("closedTestSession");
+}
 
 export default function LoginPage() {
   const router = useRouter();
-  const verifyStudent = useMutation(api.student.verifyStudent);
+  const loginInFlightRef = useRef(false);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
 
   /* --------------------------------------------------
-     BLOCK BACK BUTTON
-  ---------------------------------------------------- */
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const push = () => window.history.pushState(null, "", window.location.href);
-    push();
-    window.addEventListener("popstate", push);
-    return () => window.removeEventListener("popstate", push);
-  }, []);
-
-  /* --------------------------------------------------
      CHECK EXISTING SESSION BEFORE LOGIN
   ---------------------------------------------------- */
   useEffect(() => {
+    let cancelled = false;
+
     async function check() {
       try {
+        await resetClosedTestIfNeeded();
         const res = await fetch("/api/get-session", { credentials: "include" });
         const data = await res.json();
 
         const token = data?.token;
         if (!token) return; // no cookie → allow login
 
-        const session = await convex.query(api.sessions.validateSession, {
-          token,
+        const validateRes = await fetch("/api/validate-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ token }),
         });
+        const session = await validateRes.json();
 
-        //  invalid cookie → logout and allow login
+        if (cancelled || loginInFlightRef.current) return;
+
+        //  invalid cookie -> allow login page to continue.
+        //  Avoid calling /api/logout here because it can race with a fresh
+        //  login and delete the newly created session.
         if (!session?.valid) {
-          await fetch("/api/logout", { method: "POST" });
           return;
         }
 
@@ -60,6 +126,9 @@ export default function LoginPage() {
     }
 
     check();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   /* --------------------------------------------------
@@ -67,29 +136,90 @@ export default function LoginPage() {
   ---------------------------------------------------- */
   const handleSubmit = async (e) => {
     e.preventDefault();
+    loginInFlightRef.current = true;
     setMessage("Securely logging you in....");
 
     try {
-      const result = await verifyStudent({ username, password });
+      const safeUsername = sanitizeCredential(username);
+      const safePassword = sanitizeCredential(password);
+
+      const response = await fetch("/api/verifyStudent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          username: safeUsername,
+          password: safePassword,
+        }),
+      });
+
+      const result = await response.json();
 
       if (!result?.success) {
+        loginInFlightRef.current = false;
         setMessage(result?.message || "Invalid credentials");
         return;
+      }
+
+      if (!result.resume) {
+        clearPersistedTestState();
       }
 
       //  Store in sessionStorage for TypingCard
       sessionStorage.setItem("studentId", result.studentId);
       sessionStorage.setItem("sessionId", result.sessionId);
-      sessionStorage.setItem("testActive", "true");
+      if (result.resume) {
+        sessionStorage.setItem("testActive", "true");
+      } else {
+        sessionStorage.removeItem("testActive");
+      }
 
       //  store token for updateTestActive mutation
       sessionStorage.setItem("token", result.token);
+      if (typeof result.remainingSeconds === "number") {
+        sessionStorage.setItem(
+          "serverRemainingSeconds",
+          String(result.remainingSeconds)
+        );
+      } else {
+        sessionStorage.removeItem("serverRemainingSeconds");
+      }
+      if (typeof result.testEndsAt === "number") {
+        sessionStorage.setItem("testEndsAt", String(result.testEndsAt));
+      } else {
+        sessionStorage.removeItem("testEndsAt");
+      }
+      if (typeof result.testStartedAt === "number") {
+        sessionStorage.setItem("testStartedAt", String(result.testStartedAt));
+      } else {
+        sessionStorage.removeItem("testStartedAt");
+      }
 
       //  If you have name in result, save it
       if (result.name) {
         sessionStorage.setItem("studentName", result.name);
       }
 
+      localStorage.setItem(
+        "activeTestSession",
+        JSON.stringify({
+          studentId: result.studentId,
+          sessionId: result.sessionId,
+          token: result.token,
+          studentName: result.name || "",
+          testActive: !!result.resume,
+          serverRemainingSeconds:
+            typeof result.remainingSeconds === "number"
+              ? result.remainingSeconds
+              : null,
+          testEndsAt:
+            typeof result.testEndsAt === "number" ? result.testEndsAt : null,
+          testStartedAt:
+            typeof result.testStartedAt === "number"
+              ? result.testStartedAt
+              : null,
+        })
+      );
       //  Store backend-created session cookie
       await fetch("/api/set-session", {
         method: "POST",
@@ -103,8 +233,10 @@ export default function LoginPage() {
         }),
       });
 
+      setMessage("");
       router.replace("/test");
     } catch (err) {
+      loginInFlightRef.current = false;
       console.error(err);
       setMessage("Server error. Try again.");
     }
@@ -123,10 +255,31 @@ export default function LoginPage() {
       </LogoWrapper>
         <SubText>Login to begin your test</SubText>
 
-        <Form onSubmit={handleSubmit}>
+        <Form onSubmit={handleSubmit} autoComplete="off">
+          <input
+            type="text"
+            name="prevent_autofill_username"
+            autoComplete="username"
+            tabIndex={-1}
+            aria-hidden="true"
+            style={{ display: "none" }}
+          />
+          <input
+            type="password"
+            name="prevent_autofill_password"
+            autoComplete="new-password"
+            tabIndex={-1}
+            aria-hidden="true"
+            style={{ display: "none" }}
+          />
           <Label>Username</Label>
           <Input
             type="text"
+            name="exam_candidate_id"
+            autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
@@ -135,6 +288,11 @@ export default function LoginPage() {
           <Label>Password</Label>
           <Input
             type="password"
+            name="exam_access_key"
+            autoComplete="new-password"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required

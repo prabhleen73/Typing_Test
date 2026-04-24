@@ -1,6 +1,21 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
+function countMatchingPrefix(sourceText, typedText) {
+  const safeSource = sourceText ?? "";
+  const safeTyped = typedText ?? "";
+  let matched = 0;
+
+  for (let i = 0; i < safeTyped.length; i += 1) {
+    if (safeTyped[i] !== safeSource[i]) {
+      break;
+    }
+    matched += 1;
+  }
+
+  return matched;
+}
+
 // Check if student already attempted
 export const hasAttempted = query({
   args: {
@@ -59,7 +74,7 @@ export const saveResult = mutation({
       throw new Error("Paragraph not found");
     }
 
-    const paragraphContent = paragraph.content ?? "";
+    const paragraphContent = (paragraph.content ?? "").replace(/^\s+|\uFEFF/g, "");
     const originalSymbols = paragraphContent.length;
 
     // fetch student
@@ -73,22 +88,28 @@ export const saveResult = mutation({
     if (!student) {
       throw new Error("Student not found");
     }
+    const safeRawText = args.rawText ?? "";
+    const derivedSymbols = countMatchingPrefix(paragraphContent, safeRawText);
+    const symbols = Math.max(args.symbols ?? 0, derivedSymbols);
+    const safeSeconds = Math.max(1, args.seconds);
+    const rawWpm = Number(((symbols * 60) / (5 * safeSeconds)).toFixed(2));
+    const wpm = Math.floor(rawWpm);
+    const kdph = Math.round((symbols * 3600) / safeSeconds);
+    const finalText = args.text?.length ? args.text : safeRawText.slice(0, symbols);
 
-  
-
-   const resultId = await ctx.db.insert("results", {
+    const resultId = await ctx.db.insert("results", {
   studentId: args.studentId,     
   name: student.name || "N/A",
   sessionId: student.sessionId, 
   paragraphId: args.paragraphId,
-  symbols: args.symbols,
-  seconds: args.seconds,
+  symbols,
+  seconds: safeSeconds,
   accuracy: args.accuracy,
-  wpm: args.wpm,
-  rawWpm: args.rawWpm, 
-  kdph: args.kdph, 
-  text: args.text ?? "",
-  rawText: args.rawText ?? "",
+  wpm,
+  rawWpm,
+  kdph, 
+  text: finalText,
+  rawText: safeRawText,
   mistakes: args.mistakes ?? 0,
   correctedMistakes: args.correctedMistakes ?? 0,
   uncorrectedMistakes: args.uncorrectedMistakes ?? 0,

@@ -1,5 +1,6 @@
 // pages/test-submitted.js
 
+import { useEffect } from "react";
 import styled from "styled-components";
 import { useRouter } from "next/router";
 import { useQuery } from "convex/react";
@@ -10,10 +11,37 @@ export default function TestSubmitted() {
   const router = useRouter();
   const { resultId } = router.query;
   const isReady = router.isReady;
+  const storedResultId =
+    typeof window !== "undefined"
+      ? sessionStorage.getItem("submittedResultId")
+      : null;
+  const storedExpiryRaw =
+    typeof window !== "undefined"
+      ? sessionStorage.getItem("submittedPageExpiresAt")
+      : null;
+  const storedExpiry =
+    storedExpiryRaw !== null && !Number.isNaN(Number(storedExpiryRaw))
+      ? Number(storedExpiryRaw)
+      : null;
+  const hasValidSubmittedSession =
+    !!storedResultId &&
+    typeof storedExpiry === "number" &&
+    storedExpiry > Date.now();
+  const effectiveResultId = resultId || (hasValidSubmittedSession ? storedResultId : null);
+
+  useEffect(() => {
+    if (!isReady) return;
+    if (typeof window === "undefined") return;
+    if (effectiveResultId) return;
+
+    sessionStorage.removeItem("submittedResultId");
+    sessionStorage.removeItem("submittedPageExpiresAt");
+    router.replace("/login");
+  }, [effectiveResultId, isReady, router]);
 
   const result = useQuery(
   api.results.getResultById,
-  isReady && resultId ? { id: resultId } : "skip"
+  isReady && effectiveResultId ? { id: effectiveResultId } : "skip"
 );
 
   // Fetch test settings (for post name)

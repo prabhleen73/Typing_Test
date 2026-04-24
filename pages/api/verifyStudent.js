@@ -1,22 +1,46 @@
+import fs from "node:fs";
+import path from "node:path";
 import { ConvexHttpClient } from "convex/browser";
-import { api } from "../../convex/_generated/api";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL);
+function sanitizeCredential(value) {
+  return value
+    ?.toString()
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim();
+}
+
+function getConvexUrl() {
+  const envPath = path.join(process.cwd(), ".env.local");
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, "utf8");
+    const line = content
+      .split(/\r?\n/)
+      .find((entry) => entry.startsWith("NEXT_PUBLIC_CONVEX_URL="));
+
+    const fileUrl = line?.split("=")[1]?.trim();
+    if (fileUrl) return fileUrl;
+  }
+
+  return process.env.NEXT_PUBLIC_CONVEX_URL?.trim();
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false });
   }
 
-  const { username, password } = req.body;
+  const username = sanitizeCredential(req.body?.username);
+  const password = sanitizeCredential(req.body?.password);
 
   if (!username || !password) {
     return res.status(400).json({ success: false, message: "Missing username or password" });
   }
 
   try {
-    // modern login shape
-    const result = await convex.mutation(api.student.verifyStudent, {
+    const convexUrl = getConvexUrl();
+    const convex = new ConvexHttpClient(convexUrl);
+    const result = await convex.mutation("student:verifyStudent", {
       username,
       password,
     });

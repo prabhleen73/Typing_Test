@@ -7,6 +7,18 @@ function randomToken() {
   return `${crypto.randomUUID()}_${crypto.randomUUID()}_${Date.now()}`;
 }
 
+function getRemainingSeconds(session, now = Date.now()) {
+  if (typeof session.testEndsAt === "number") {
+    return Math.max(0, Math.ceil((session.testEndsAt - now) / 1000));
+  }
+
+  if (typeof session.remainingSeconds === "number") {
+    return Math.max(0, session.remainingSeconds);
+  }
+
+  return null;
+}
+
 // Create session after login
 export const createSession = mutation({
   args: {
@@ -23,7 +35,6 @@ export const createSession = mutation({
       token,
       expiresAt,
       testActive: false,
-      remainingSeconds: null,  
       updatedAt: Date.now(),
     });
 
@@ -48,6 +59,9 @@ export const validateSession = query({
       valid: true,
       studentId: session.studentId,
       testActive: session.testActive ?? false,
+      remainingSeconds: getRemainingSeconds(session),
+      testStartedAt: session.testStartedAt ?? null,
+      testEndsAt: session.testEndsAt ?? null,
     };
   },
 });
@@ -57,9 +71,11 @@ export const updateTestActive = mutation({
   args: {
     token: v.string(),
     active: v.boolean(),
+    duration: v.optional(v.number()),
+    resumeRemainingSeconds: v.optional(v.number()),
   },
 
-  handler: async (ctx, { token, active }) => {
+  handler: async (ctx, { token, active, duration, resumeRemainingSeconds }) => {
     const session = await ctx.db
       .query("sessions")
       .withIndex("by_token", (q) => q.eq("token", token))
@@ -67,12 +83,85 @@ export const updateTestActive = mutation({
 
     if (!session) return { success: false };
 
-    await ctx.db.patch(session._id, {
-  testActive: active,
-  updatedAt: Date.now(),
-});
+    const now = Date.now();
+    const currentRemaining = getRemainingSeconds(session, now);
 
-    return { success: true };
+    if (active) {
+      if (
+        typeof resumeRemainingSeconds === "number" &&
+        resumeRemainingSeconds >= 0
+      ) {
+        const anchoredRemaining = Math.max(0, Math.ceil(resumeRemainingSeconds));
+        const testStartedAt =
+          typeof session.testStartedAt === "number" ? session.testStartedAt : now;
+        const testEndsAt = now + anchoredRemaining * 1000;
+
+        await ctx.db.patch(session._id, {
+          testActive: anchoredRemaining > 0,
+          remainingSeconds: anchoredRemaining,
+          testStartedAt,
+          testEndsAt,
+          updatedAt: now,
+        });
+
+        return {
+          success: true,
+          remainingSeconds: anchoredRemaining,
+          testStartedAt,
+          testEndsAt,
+        };
+      }
+
+      if (
+        typeof session.testStartedAt === "number" &&
+        typeof session.testEndsAt === "number"
+      ) {
+        const stillRunning = currentRemaining > 0;
+
+        await ctx.db.patch(session._id, {
+          testActive: stillRunning,
+          remainingSeconds: currentRemaining ?? 0,
+          updatedAt: now,
+        });
+
+        return {
+          success: true,
+          remainingSeconds: currentRemaining ?? 0,
+          testStartedAt: session.testStartedAt,
+          testEndsAt: session.testEndsAt,
+        };
+      }
+
+      if (typeof duration !== "number" || duration <= 0) {
+        return { success: false, message: "Duration required to start test" };
+      }
+
+      const testStartedAt = now;
+      const testEndsAt = now + duration * 1000;
+
+      await ctx.db.patch(session._id, {
+        testActive: true,
+        remainingSeconds: duration,
+        testStartedAt,
+        testEndsAt,
+        updatedAt: now,
+      });
+
+      return {
+        success: true,
+        remainingSeconds: duration,
+        testStartedAt,
+        testEndsAt,
+      };
+    }
+
+    await ctx.db.patch(session._id, {
+      testActive: false,
+      remainingSeconds: currentRemaining ?? 0,
+      updatedAt: now,
+    });
+
+    return { success: true, remainingSeconds: currentRemaining ?? 0 };
   },
 });
 
@@ -124,11 +213,18 @@ export const updateRemainingTime = mutation({
 
     if (!session) return { success: false };
 
+    const derivedRemaining = getRemainingSeconds(session);
+    const safeClientRemaining = Math.max(0, remainingSeconds);
+    const canonicalRemaining =
+      typeof derivedRemaining === "number"
+        ? Math.min(derivedRemaining, safeClientRemaining)
+        : safeClientRemaining;
+
     await ctx.db.patch(session._id, {
-      remainingSeconds,
+      remainingSeconds: canonicalRemaining,
       updatedAt: Date.now(),
     });
 
-    return { success: true };
+    return { success: true, remainingSeconds: canonicalRemaining };
   },
 });

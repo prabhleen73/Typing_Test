@@ -39,7 +39,7 @@ export const generateTypingPDF = (result, options = {}) => {
   result.name || "N/A",
   `${formatTime(result.seconds)}`,
   result.sessionName || "N/A",
-  result.wpm || "N/A",
+  result.wpm ?? "N/A",
   postName ? postName : "N/A",
   result.kdph || 0,
 ];

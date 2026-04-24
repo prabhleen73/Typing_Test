@@ -11,25 +11,16 @@ export default function handler(req, res) {
 
   const expiryDate = new Date(safeExpiresAt).toUTCString();
   const maxAge = Math.floor((safeExpiresAt - Date.now()) / 1000);
+  const safeMaxAge = Math.max(0, maxAge);
+  const cookie = [
+    `session=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${safeMaxAge}`,
+    `Expires=${expiryDate}`,
+  ].join("; ");
 
-  const deleteOld = [
-    "session=;",
-    "Path=/;",
-    "HttpOnly;",
-    "SameSite=Lax;",
-    "Max-Age=0;",
-    "Expires=Thu, 01 Jan 1970 00:00:00 GMT;",
-  ].join(" ");
-
-  const newCookie = [
-    `session=${encodeURIComponent(token)};`,
-    "Path=/;",
-    "HttpOnly;",
-    "SameSite=Lax;",
-    `Max-Age=${maxAge};`,
-    `Expires=${expiryDate};`,
-  ].join(" ");
-
-  res.setHeader("Set-Cookie", [deleteOld, newCookie]);
+  res.setHeader("Set-Cookie", cookie);
   return res.status(200).json({ success: true });
 }

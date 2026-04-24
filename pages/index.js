@@ -1,4 +1,14 @@
-import HomePage from "../components/HomePage";
+import { useEffect } from "react";
+import { useRouter } from "next/router";
+
 export default function IndexPage() {
-  return <HomePage />;
+  const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    router.replace("/login");
+  }, [router]);
+
+  return null;
 }

@@ -2,6 +2,29 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
 
+function normalizeApplicationNumber(value) {
+  return value?.toString().trim();
+}
+
+function generateStudentPassword(name, dob) {
+  const firstName = name.trim().split(/\s+/)[0].toLowerCase();
+  const firstFour = firstName.slice(0, 4);
+  const year = new Date(dob).getFullYear();
+  return `${firstFour}${year}`;
+}
+
+function getRemainingSeconds(session, now = Date.now()) {
+  if (typeof session?.testEndsAt === "number") {
+    return Math.max(0, Math.ceil((session.testEndsAt - now) / 1000));
+  }
+
+  if (typeof session?.remainingSeconds === "number") {
+    return Math.max(0, session.remainingSeconds);
+  }
+
+  return null;
+}
+
 //create student
 export const createStudent = mutation({
   args: {
@@ -13,22 +36,20 @@ export const createStudent = mutation({
   },
 
   handler: async (ctx, { name, applicationNumber, dob, sessionId, sessionName }) => {
+    const normalizedName = name?.trim();
+    const normalizedApplicationNumber = normalizeApplicationNumber(applicationNumber);
+    const normalizedDob = dob?.trim();
 
-    if (!name || !applicationNumber || !dob || !sessionId || !sessionName) {
+    if (!normalizedName || !normalizedApplicationNumber || !normalizedDob || !sessionId || !sessionName) {
       return { success: false, message: "Missing required fields" };
     }
 
-    const firstName = name.trim().split(/\s+/)[0].toLowerCase();
-    const firstFour = firstName.slice(0, 4);
-
-   const year = new Date(dob).getFullYear();
-
-  const generatedPassword = `${firstFour}${year}`;
+    const generatedPassword = generateStudentPassword(normalizedName, normalizedDob);
     //  Check if student already exists
     const existing = await ctx.db
       .query("students")
       .withIndex("by_applicationNumber", (q) =>
-        q.eq("applicationNumber", applicationNumber)
+        q.eq("applicationNumber", normalizedApplicationNumber)
       )
       .first();
 
@@ -41,9 +62,9 @@ export const createStudent = mutation({
 
     // ✅ Insert only if student does not exist
     await ctx.db.insert("students", {
-      name,
-      applicationNumber,
-      dob,
+      name: normalizedName,
+      applicationNumber: normalizedApplicationNumber,
+      dob: normalizedDob,
       password: generatedPassword,
       sessionId,
       sessionName,
@@ -64,14 +85,17 @@ export const verifyStudent = mutation({
   },
 
   handler: async (ctx, args) => {
-    const username =
-      args.username ?? args.applicationNumber ?? args.studentId ?? args.name;
+    const username = normalizeApplicationNumber(
+      args.username ?? args.applicationNumber ?? args.studentId ?? args.name
+    );
 
-    const password = args.password;
+    const password = args.password?.trim();
 
     if (!username || !password) {
       return { success: false, message: "Missing username or password" };
     }
+
+    console.log("verifyStudent input:", username);
 
     const student = await ctx.db
       .query("students")
@@ -85,9 +109,15 @@ export const verifyStudent = mutation({
     }
 
     //  1. CHECK PASSWORD FIRST (CASE INSENSITIVE)
+    const suppliedPassword = password.toLowerCase();
+    const storedPassword = student.password?.trim().toLowerCase();
+    const generatedPassword = generateStudentPassword(student.name, student.dob)
+      .trim()
+      .toLowerCase();
+
     if (
-      password.trim().toLowerCase() !==
-      student.password.trim().toLowerCase()
+      suppliedPassword !== storedPassword &&
+      suppliedPassword !== generatedPassword
     ) {
       return { success: false, message: "Invalid credentials" };
     }
@@ -116,6 +146,7 @@ export const verifyStudent = mutation({
       .first();
 
     if (activeSession && activeSession.testActive) {
+      const remainingSeconds = getRemainingSeconds(activeSession);
       //  Safe token generator (works in Convex runtime)
       const newToken = `${Date.now()}_${Math.random()
         .toString(36)
@@ -127,6 +158,9 @@ export const verifyStudent = mutation({
       await ctx.db.patch(activeSession._id, {
         token: newToken,
         expiresAt: newExpiresAt,
+        remainingSeconds: remainingSeconds ?? 0,
+        testActive: (remainingSeconds ?? 0) > 0,
+        updatedAt: Date.now(),
       });
 
       return {
@@ -137,7 +171,10 @@ export const verifyStudent = mutation({
         token: newToken,
         expiresAt: newExpiresAt,
         sessionId: student.sessionId,
-        remainingSeconds: activeSession.remainingSeconds ?? null,
+        remainingSeconds,
+        testStartedAt: activeSession.testStartedAt ?? null,
+        testEndsAt: activeSession.testEndsAt ?? null,
+        name: student.name,
 
       };
     }
@@ -164,6 +201,7 @@ export const verifyStudent = mutation({
       token: session.token,
       expiresAt: session.expiresAt,
       sessionId: student.sessionId,
+      name: student.name,
     };
   },
 });
@@ -207,6 +245,18 @@ export const getStudentById = query({
       .query("students")
       .withIndex("by_applicationNumber", (q) =>
         q.eq("applicationNumber", studentId)
+      )
+      .first();
+  },
+});
+
+export const getStudentDebug = query({
+  args: { applicationNumber: v.string() },
+  handler: async (ctx, { applicationNumber }) => {
+    return await ctx.db
+      .query("students")
+      .withIndex("by_applicationNumber", (q) =>
+        q.eq("applicationNumber", applicationNumber.trim())
       )
       .first();
   },

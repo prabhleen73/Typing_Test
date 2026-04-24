@@ -27,11 +27,9 @@ export default defineSchema({
     token: v.string(),
     expiresAt: v.number(),
     testActive: v.boolean(),
-
-    //  used for timer restore across tabs/windows
     remainingSeconds: v.optional(v.number()),
-
-    // (optional but recommended for future upgrade)
+    testStartedAt: v.optional(v.number()),
+    testEndsAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   })
     .index("by_token", ["token"])
@@ -102,6 +100,7 @@ export default defineSchema({
 
     // ✔ backup timer (local recovery)
     remainingSeconds: v.number(),
+    testEndsAt: v.optional(v.number()),
 
     isSubmitted: v.boolean(),
     updatedAt: v.number(),

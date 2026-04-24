@@ -229,7 +229,7 @@ pageWidth / 2,
     r.name || "N/A",
     `${formatTime(r.seconds)}`,
     r.sessionName || "N/A",
-    r.wpm || "N/A",
+    r.wpm ?? "N/A",
     r.postApplied || testSettings?.postName || "N/A",
     r.kdph || 0,
   ];

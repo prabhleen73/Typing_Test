@@ -1,7 +1,7 @@
-// middleware.js
+// proxy.js
 import { NextResponse } from "next/server";
 
-export function middleware(req) {
+export function proxy(req) {
   const session = req.cookies.get("session")?.value;
 
   // Protect the test route
