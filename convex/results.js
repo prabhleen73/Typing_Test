@@ -134,9 +134,8 @@ export const getAllResults = query({
 });
 
 
-/* =========================================================
-   GET RESULTS BY SESSION (ADMIN PAGE)
-========================================================= */
+
+//GET RESULTS BY SESSION (ADMIN PAGE)
 
 export const getResultsBySession = query({
   args: { sessionId: v.id("testSessions") },
@@ -158,9 +157,7 @@ export const getResultsBySession = query({
 });
 
 
-/* =========================================================
-   ✅ GET SINGLE RESULT BY ID (FOR TEST SUBMITTED PAGE)
-========================================================= */
+  //GET SINGLE RESULT BY ID (FOR TEST SUBMITTED PAGE)
 
 export const getResultById = query({
   args: { id: v.id("results") },

@@ -7,7 +7,7 @@ export default async function handler(req, res) {
 
   const { email, username, password } = req.body;
 
-  const testLink = "http://localhost:3000/admin/admin-login";
+  const testLink = "http://10.50.0.53:3000/admin/admin-login";
 
   try {
     const transporter = nodemailer.createTransport({

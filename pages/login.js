@@ -131,9 +131,9 @@ export default function LoginPage() {
     };
   }, [router]);
 
-  /* --------------------------------------------------
-     LOGIN HANDLER
-  ---------------------------------------------------- */
+  
+    // LOGIN HANDLER
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     loginInFlightRef.current = true;

@@ -358,7 +358,7 @@ export default function TypingCard({ studentId }) {
         if (draftSaveResult?.success === false) {
           // Keep the test running locally even if a sync attempt fails.
           // This prevents candidates from being thrown out mid-test because of
-          // a temporary session validation mismatch or network blip.
+          // a temporary session validation mismatch 
           writeLocalState(remainingSeconds);
           return;
         }

@@ -5,10 +5,10 @@ function Preview({ text, userInput }) {
   const containerRef = useRef(null);
   const cursorRef = useRef(null);
 
-  // ✅ split text only once
+  //  split text only once
   const characters = useMemo(() => text.split(""), [text]);
 
-  // ✅ scroll logic (optimized)
+  //  scroll logic
   useEffect(() => {
     const container = containerRef.current;
     const cursor = cursorRef.current;
@@ -33,7 +33,7 @@ function Preview({ text, userInput }) {
         Math.min(targetScroll, maxScroll)
       );
 
-      // ✅ avoid unnecessary DOM updates
+      //  avoid unnecessary DOM update
       if (container.scrollTop !== nextScroll) {
         container.scrollTop = nextScroll;
       }
@@ -66,9 +66,9 @@ function Preview({ text, userInput }) {
   );
 }
 
-/* =========================
-   🔥 MEMOIZED CHAR (KEY FIX)
-   ========================= */
+
+   //MEMOIZED CHAR (KEY FIX)
+
 
 const MemoChar = React.memo(
   ({ char, status, isCursor, cursorRef }) => {

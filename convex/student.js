@@ -60,7 +60,7 @@ export const createStudent = mutation({
       };
     }
 
-    // ✅ Insert only if student does not exist
+    // Insert only if student does not exist
     await ctx.db.insert("students", {
       name: normalizedName,
       applicationNumber: normalizedApplicationNumber,
@@ -206,9 +206,9 @@ export const verifyStudent = mutation({
   },
 });
 
-/* ------------------------------------------
-   CHECK STUDENT EXISTS (used by /test)
----------------------------------------------*/
+
+  // CHECK STUDENT EXISTS (used by /test)
+
 export const checkExists = query({
   args: { studentId: v.string() },
 
