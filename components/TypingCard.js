@@ -130,6 +130,11 @@ const getPersistedActiveSession = () => {
   return parseStoredState(localStorage.getItem("activeTestSession"));
 };
 
+const getPendingRefreshState = () => {
+  if (typeof window === "undefined") return null;
+  return parseStoredState(localStorage.getItem("pendingTestRefresh"));
+};
+
 const shouldResetAfterClosedTab = () => {
   if (typeof window === "undefined") return false;
   const closedMarker = localStorage.getItem("closedTestSession");
@@ -167,6 +172,8 @@ export default function TypingCard({ studentId }) {
   const hasRestoredRef = useRef(false);
   const deadlineRef = useRef(null);
   const savingRef = useRef(false);
+  const offlinePausedRef = useRef(false);
+  const fullscreenPausedRef = useRef(false);
 
   const resolvedStudentId = studentId ?? storedStudentId ?? null;
   const storageSuffix =
@@ -213,9 +220,9 @@ export default function TypingCard({ studentId }) {
   }, [countDown, timeSetting?.duration]);
 
   const syncErrorStateFromValue = useCallback(
-    (value) => {
+    (value, referenceText = text) => {
       const mismatchIndex = Array.from(value).findIndex(
-        (char, index) => char !== text[index]
+        (char, index) => char !== referenceText[index]
       );
 
       if (mismatchIndex === -1) {
@@ -231,7 +238,7 @@ export default function TypingCard({ studentId }) {
   );
 
   const writeLocalState = useCallback(
-    (remainingOverride) => {
+    (remainingOverride, pauseTimer = false) => {
       if (typeof window === "undefined") return;
 
       const remainingSeconds =
@@ -246,8 +253,9 @@ export default function TypingCard({ studentId }) {
         finished,
         remainingSeconds,
         savedAt: Date.now(),
-        testEndsAt:
-          typeof deadlineRef.current === "number"
+        testEndsAt: pauseTimer
+          ? null
+          : typeof deadlineRef.current === "number"
             ? deadlineRef.current
             : (() => {
                 const stored = sessionStorage.getItem("testEndsAt");
@@ -291,7 +299,15 @@ export default function TypingCard({ studentId }) {
         sessionStorage.removeItem("remainingTime");
       }
     },
-    [finished, getCurrentRemaining, localDraftKey, started]
+    [
+      finished,
+      getCurrentRemaining,
+      localDraftKey,
+      resolvedStudentId,
+      sessionId,
+      sessionToken,
+      started,
+    ]
   );
 
   const persistProgress = useCallback(
@@ -400,6 +416,58 @@ export default function TypingCard({ studentId }) {
       writeLocalState,
     ]
   );
+
+  const pauseAndSaveProgress = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!started || finished || submittedRef.current) return;
+
+    const token = sessionToken || sessionStorage.getItem("token") || null;
+    const activeStudentId =
+      resolvedStudentId ?? sessionStorage.getItem("studentId") ?? null;
+    const activeSessionId = sessionId ?? sessionStorage.getItem("sessionId") ?? null;
+    const activeParagraphId = paragraphIdRef.current;
+    const remainingSeconds = getCurrentRemaining();
+
+    writeLocalState(remainingSeconds, true);
+    sessionStorage.removeItem("testEndsAt");
+
+    if (!token || !activeStudentId || !activeSessionId || !activeParagraphId) {
+      return;
+    }
+
+    const payload = JSON.stringify({
+      token,
+      studentId: activeStudentId,
+      sessionId: activeSessionId,
+      paragraphId: activeParagraphId,
+      typedText: userInputRef.current || "",
+      started: true,
+      duration: timeSetting?.duration || 0,
+      remainingSeconds,
+    });
+
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: "application/json" });
+      navigator.sendBeacon("/api/pause-test", blob);
+      return;
+    }
+
+    fetch("/api/pause-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true,
+    }).catch(() => {});
+  }, [
+    finished,
+    getCurrentRemaining,
+    resolvedStudentId,
+    sessionId,
+    sessionToken,
+    started,
+    timeSetting?.duration,
+    writeLocalState,
+  ]);
 
   const handleSaveResultToDB = useCallback(
     async ({ input, seconds }) => {
@@ -591,6 +659,103 @@ export default function TypingCard({ studentId }) {
     [doAutoSubmit, getCurrentRemaining, timeSetting?.duration]
   );
 
+  const pauseRunningAttempt = useCallback(
+    (pauseRef) => {
+      if (!started || finished || submittedRef.current) return;
+
+      const remainingSeconds = getCurrentRemaining();
+      pauseRef.current = true;
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      deadlineRef.current = null;
+      setCountDown(remainingSeconds);
+      setTypingEnabled(false);
+      pauseAndSaveProgress();
+    },
+    [finished, getCurrentRemaining, pauseAndSaveProgress, started]
+  );
+
+  const resumePausedAttempt = useCallback(
+    (pauseRef) => {
+      if (!pauseRef.current || !started || finished) return;
+
+      pauseRef.current = false;
+      const remainingSeconds = getCurrentRemaining();
+      if (remainingSeconds <= 0) {
+        doAutoSubmit(timeSetting?.duration || 0);
+        return;
+      }
+
+      setTypingEnabled(true);
+      startAccurateTimer(remainingSeconds);
+
+      const token = sessionToken || sessionStorage.getItem("token");
+      if (token) {
+        updateTestActive({
+          token,
+          active: true,
+          duration: timeSetting?.duration || 0,
+          resumeRemainingSeconds: remainingSeconds,
+        }).catch(() => {});
+      }
+    },
+    [
+      doAutoSubmit,
+      finished,
+      getCurrentRemaining,
+      sessionToken,
+      startAccurateTimer,
+      started,
+      timeSetting?.duration,
+      updateTestActive,
+    ]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const pauseForOffline = () => {
+      pauseRunningAttempt(offlinePausedRef);
+    };
+
+    const resumeAfterOffline = () => {
+      resumePausedAttempt(offlinePausedRef);
+    };
+
+    window.addEventListener("offline", pauseForOffline);
+    window.addEventListener("online", resumeAfterOffline);
+
+    return () => {
+      window.removeEventListener("offline", pauseForOffline);
+      window.removeEventListener("online", resumeAfterOffline);
+    };
+  }, [
+    pauseRunningAttempt,
+    resumePausedAttempt,
+  ]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const handleFullscreenChange = () => {
+      const fsReady = sessionStorage.getItem("fsReady") === "true";
+      if (!fsReady || !started || finished) return;
+
+      if (!document.fullscreenElement) {
+        pauseRunningAttempt(fullscreenPausedRef);
+        return;
+      }
+
+      resumePausedAttempt(fullscreenPausedRef);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, [finished, pauseRunningAttempt, resumePausedAttempt, started]);
+
   useEffect(() => {
     if (!textAreaRef.current) return;
 
@@ -646,22 +811,40 @@ export default function TypingCard({ studentId }) {
       if (!started || finished) return;
       const token =
         sessionToken || sessionStorage.getItem("token") || null;
+      const remainingSeconds = getCurrentRemaining();
+      const activeStudentId =
+        resolvedStudentId ?? sessionStorage.getItem("studentId") ?? null;
+      const activeSessionId = sessionId ?? sessionStorage.getItem("sessionId") ?? null;
+
+      localStorage.setItem(
+        "pendingTestRefresh",
+        JSON.stringify({
+          token,
+          studentId: activeStudentId,
+          sessionId: activeSessionId,
+          paragraphId: paragraphIdRef.current,
+          text: userInputRef.current || "",
+          started: true,
+          finished: false,
+          remainingSeconds,
+          savedAt: Date.now(),
+          testEndsAt: null,
+        })
+      );
       localStorage.setItem(
         "closedTestSession",
         JSON.stringify({
           token,
-          studentId: resolvedStudentId ?? sessionStorage.getItem("studentId"),
-          sessionId: sessionId ?? sessionStorage.getItem("sessionId"),
+          studentId: activeStudentId,
+          sessionId: activeSessionId,
         })
       );
-      writeLocalState();
-      persistProgress();
+      pauseAndSaveProgress();
     };
 
     const handleVisibility = () => {
       if (document.hidden && started && !finished) {
-        writeLocalState();
-        persistProgress();
+        pauseAndSaveProgress();
       }
     };
 
@@ -674,7 +857,15 @@ export default function TypingCard({ studentId }) {
       window.removeEventListener("pagehide", handlePageExit);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [finished, persistProgress, started]);
+  }, [
+    finished,
+    getCurrentRemaining,
+    pauseAndSaveProgress,
+    resolvedStudentId,
+    sessionId,
+    sessionToken,
+    started,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -694,6 +885,13 @@ export default function TypingCard({ studentId }) {
     const cleaned = (paragraph.content || "").replace(/^\s+|\uFEFF/g, "");
     const persistedSession = getPersistedActiveSession();
     const storedActive = sessionStorage.getItem("testActive") === "true";
+    const navigationEntry = performance.getEntriesByType("navigation")?.[0];
+    const pendingRefreshState = getPendingRefreshState();
+    const shouldUseRefreshState =
+      navigationEntry?.type === "reload" &&
+      pendingRefreshState?.paragraphId === paragraph._id &&
+      pendingRefreshState?.started === true &&
+      pendingRefreshState?.finished !== true;
     paragraphIdRef.current = paragraph._id;
     setText(cleaned);
     sessionStorage.setItem("paragraphId", paragraph._id);
@@ -712,6 +910,7 @@ export default function TypingCard({ studentId }) {
       localStorage.removeItem(localDraftKey);
       localStorage.removeItem("activeTestSession");
       localStorage.removeItem("closedTestSession");
+      localStorage.removeItem("pendingTestRefresh");
       setUserInputState("");
       setDraftRestored(false);
       setStarted(false);
@@ -737,6 +936,16 @@ export default function TypingCard({ studentId }) {
         ? Number(storedTestEndsAtRaw)
         : null;
     const textSnapshots = [];
+
+    if (shouldUseRefreshState) {
+      textSnapshots.push({
+        source: "refresh",
+        text: pendingRefreshState.text || "",
+        started: true,
+        finished: false,
+        savedAt: pendingRefreshState.savedAt ?? Date.now(),
+      });
+    }
 
     if (clientState && clientState.paragraphId === paragraph._id) {
       textSnapshots.push({
@@ -776,7 +985,16 @@ export default function TypingCard({ studentId }) {
     textSnapshots.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
     const bestSnapshot = textSnapshots[0] ?? null;
 
+    const getPausedStoredRemaining = (snapshot) => {
+      if (!snapshot || typeof snapshot.remainingSeconds !== "number") return null;
+      if (typeof snapshot.testEndsAt === "number") return null;
+      return Math.max(0, snapshot.remainingSeconds);
+    };
+
     const localRemainingCandidates = [
+      getPausedStoredRemaining(draft),
+      getPausedStoredRemaining(clientState),
+      getPausedStoredRemaining(localState),
       getRemainingFromEndAt(draft?.testEndsAt),
       getRemainingFromEndAt(clientState?.testEndsAt),
       getSnapshotRemaining(clientState?.remainingSeconds, clientState?.savedAt),
@@ -800,6 +1018,9 @@ export default function TypingCard({ studentId }) {
         ? Math.max(0, localState.remainingSeconds)
         : null;
     const authoritativeRemaining =
+      getPausedStoredRemaining(
+        shouldUseRefreshState ? pendingRefreshState : null
+      ) ??
       exactClosedTabRemaining ??
       getRemainingFromEndAt(serverSession?.testEndsAt) ??
       serverRemaining;
@@ -814,11 +1035,14 @@ export default function TypingCard({ studentId }) {
       )
     );
     const hasActiveResumeSignal =
+      shouldUseRefreshState ||
       storedActive ||
+      serverSession?.testPaused === true ||
       persistedSession?.testActive === true ||
       typeof exactClosedTabRemaining === "number";
     const shouldResumeFromServer =
-      (serverSession?.valid && serverSession?.testActive) ||
+      (serverSession?.valid &&
+        (serverSession?.testActive || serverSession?.testPaused)) ||
       (hasActiveResumeSignal && draft?.started && !draft?.isSubmitted);
 
     if (bestSnapshot) {
@@ -828,16 +1052,18 @@ export default function TypingCard({ studentId }) {
       setStarted(bestSnapshot.started || shouldResumeFromServer);
       setFinished(bestSnapshot.finished);
       correctedMistakesRef.current = 0;
-      syncErrorStateFromValue(bestSnapshot.text);
+      syncErrorStateFromValue(bestSnapshot.text, cleaned);
       setCountDown(restoredRemaining);
 
       const shouldResume =
         shouldResumeFromServer ||
-        (hasActiveResumeSignal && bestSnapshot.started && !bestSnapshot.finished);
+        (bestSnapshot.started && !bestSnapshot.finished);
 
       if (shouldResume && !bestSnapshot.finished) {
         sessionStorage.setItem("testActive", "true");
-        if (typeof draft?.testEndsAt === "number") {
+        if (shouldUseRefreshState) {
+          sessionStorage.removeItem("testEndsAt");
+        } else if (typeof draft?.testEndsAt === "number") {
           sessionStorage.setItem("testEndsAt", String(draft.testEndsAt));
         }
 
@@ -859,6 +1085,7 @@ export default function TypingCard({ studentId }) {
                 active: true,
                 duration,
                 resumeRemainingSeconds:
+                  shouldUseRefreshState ||
                   typeof exactClosedTabRemaining === "number"
                     ? restoredRemaining
                     : undefined,
@@ -893,6 +1120,9 @@ export default function TypingCard({ studentId }) {
                   })
                 );
               }
+              if (shouldUseRefreshState) {
+                localStorage.removeItem("pendingTestRefresh");
+              }
             }
           } catch {}
         })();
@@ -901,7 +1131,7 @@ export default function TypingCard({ studentId }) {
       setCountDown(duration);
       userInputRef.current = "";
       setUserInputState("");
-      syncErrorStateFromValue("");
+      syncErrorStateFromValue("", cleaned);
 
       if (shouldResumeFromServer) {
         setStarted(true);

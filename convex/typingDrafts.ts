@@ -104,6 +104,80 @@ export const saveDraft = mutation({
   },
 });
 
+export const pauseAndSaveDraft = mutation({
+  args: {
+    token: v.string(),
+    studentId: v.string(),
+    sessionId: v.id("testSessions"),
+    paragraphId: v.id("paragraphs"),
+    typedText: v.string(),
+    started: v.boolean(),
+    duration: v.number(),
+    remainingSeconds: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+
+    if (!session) {
+      return { success: false, reason: "invalid_session" };
+    }
+
+    if (session.studentId !== args.studentId) {
+      return { success: false, reason: "student_mismatch" };
+    }
+
+    const safeRemaining = Math.max(0, Math.ceil(args.remainingSeconds));
+    const existing = await ctx.db
+      .query("typingTestDrafts")
+      .withIndex("by_student_session", (q) =>
+        q.eq("studentId", args.studentId).eq("sessionId", args.sessionId)
+      )
+      .unique();
+
+    if (existing?.isSubmitted) return { success: false, reason: "submitted" };
+
+    await ctx.db.patch(session._id, {
+      testActive: false,
+      remainingSeconds: safeRemaining,
+      testEndsAt: undefined,
+      updatedAt: now,
+    });
+
+    const draftPatch = {
+      paragraphId: args.paragraphId,
+      typedText: args.typedText,
+      started: args.started,
+      duration: args.duration,
+      remainingSeconds: safeRemaining,
+      updatedAt: now,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        ...draftPatch,
+        testEndsAt: undefined,
+      });
+    } else {
+      await ctx.db.insert("typingTestDrafts", {
+        studentId: args.studentId,
+        sessionId: args.sessionId,
+        ...draftPatch,
+        isSubmitted: false,
+      });
+    }
+
+    return {
+      success: true,
+      remainingSeconds: safeRemaining,
+      testEndsAt: null,
+    };
+  },
+});
+
 /**
  * Mark Submitted (Lock draft forever after final submit)
  */

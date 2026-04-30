@@ -55,11 +55,20 @@ export const validateSession = query({
     if (!session) return { valid: false };
     if (session.expiresAt < Date.now()) return { valid: false };
 
+    const remainingSeconds = getRemainingSeconds(session);
+    const testPaused =
+      session.testActive !== true &&
+      typeof session.testStartedAt === "number" &&
+      typeof remainingSeconds === "number" &&
+      remainingSeconds > 0 &&
+      typeof session.testEndsAt !== "number";
+
     return {
       valid: true,
       studentId: session.studentId,
       testActive: session.testActive ?? false,
-      remainingSeconds: getRemainingSeconds(session),
+      testPaused,
+      remainingSeconds,
       testStartedAt: session.testStartedAt ?? null,
       testEndsAt: session.testEndsAt ?? null,
     };
@@ -114,6 +123,32 @@ export const updateTestActive = mutation({
 
       if (
         typeof session.testStartedAt === "number" &&
+        typeof session.remainingSeconds === "number" &&
+        typeof session.testEndsAt !== "number"
+      ) {
+        const anchoredRemaining = Math.max(
+          0,
+          Math.ceil(session.remainingSeconds)
+        );
+        const testEndsAt = now + anchoredRemaining * 1000;
+
+        await ctx.db.patch(session._id, {
+          testActive: anchoredRemaining > 0,
+          remainingSeconds: anchoredRemaining,
+          testEndsAt,
+          updatedAt: now,
+        });
+
+        return {
+          success: true,
+          remainingSeconds: anchoredRemaining,
+          testStartedAt: session.testStartedAt,
+          testEndsAt,
+        };
+      }
+
+      if (
+        typeof session.testStartedAt === "number" &&
         typeof session.testEndsAt === "number"
       ) {
         const stillRunning = currentRemaining > 0;
@@ -158,6 +193,7 @@ export const updateTestActive = mutation({
     await ctx.db.patch(session._id, {
       testActive: false,
       remainingSeconds: currentRemaining ?? 0,
+      testEndsAt: undefined,
       updatedAt: now,
     });
 

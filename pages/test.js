@@ -20,6 +20,16 @@ function getPersistedActiveSession() {
   }
 }
 
+function getPendingRefreshState() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    return JSON.parse(localStorage.getItem("pendingTestRefresh") || "null");
+  } catch {
+    return null;
+  }
+}
+
 async function resetClosedTestIfNeeded() {
   if (typeof window === "undefined") return false;
 
@@ -322,6 +332,24 @@ export default function TestPage() {
       const storedActive = sessionStorage.getItem("testActive") === "true";
       const storedToken = sessionStorage.getItem("token");
       const persistedSession = getPersistedActiveSession();
+      const navigationEntry = performance.getEntriesByType("navigation")?.[0];
+      const pendingRefreshState = getPendingRefreshState();
+      const hasPendingRefresh =
+        navigationEntry?.type === "reload" &&
+        pendingRefreshState?.started === true &&
+        pendingRefreshState?.finished !== true;
+      let storedTypingState = null;
+      try {
+        storedTypingState = JSON.parse(
+          sessionStorage.getItem("typingState") || "null"
+        );
+      } catch {
+        storedTypingState = null;
+      }
+      const hasPausedDraft =
+        hasPendingRefresh ||
+        (storedTypingState?.started === true &&
+          storedTypingState?.finished !== true);
 
       if (storedSid || persistedSession?.studentId) {
         setStudentId(storedSid || persistedSession?.studentId);
@@ -362,6 +390,21 @@ export default function TestPage() {
           "serverRemainingSeconds",
           String(persistedSession.serverRemainingSeconds)
         );
+      }
+
+      if (hasPendingRefresh) {
+        sessionStorage.setItem("testActive", "true");
+        if (typeof pendingRefreshState.remainingSeconds === "number") {
+          sessionStorage.setItem(
+            "serverRemainingSeconds",
+            String(pendingRefreshState.remainingSeconds)
+          );
+          sessionStorage.setItem(
+            "remainingTime",
+            String(pendingRefreshState.remainingSeconds)
+          );
+        }
+        sessionStorage.removeItem("testEndsAt");
       }
 
       if (storedActive) {
@@ -410,17 +453,19 @@ export default function TestPage() {
       }
 
       sessionStorage.setItem("token", token);
-      if (typeof session.remainingSeconds === "number") {
+      const canResumePausedTest = session.testPaused === true;
+
+      if (!hasPendingRefresh && typeof session.remainingSeconds === "number") {
         sessionStorage.setItem(
           "serverRemainingSeconds",
           String(session.remainingSeconds)
         );
-      } else {
+      } else if (!hasPendingRefresh) {
         sessionStorage.removeItem("serverRemainingSeconds");
       }
-      if (typeof session.testEndsAt === "number") {
+      if (!hasPendingRefresh && typeof session.testEndsAt === "number") {
         sessionStorage.setItem("testEndsAt", String(session.testEndsAt));
-      } else {
+      } else if (!hasPendingRefresh) {
         sessionStorage.removeItem("testEndsAt");
       }
       if (typeof session.testStartedAt === "number") {
@@ -456,12 +501,19 @@ export default function TestPage() {
           sessionId: resolvedSessionId,
           token,
           studentName: student?.name || "",
-          testActive: !!session.testActive,
+          testActive: !!session.testActive || canResumePausedTest || hasPausedDraft,
           serverRemainingSeconds:
+            hasPendingRefresh &&
+            typeof pendingRefreshState.remainingSeconds === "number"
+              ? pendingRefreshState.remainingSeconds
+              :
             typeof session.remainingSeconds === "number"
               ? session.remainingSeconds
               : null,
           testEndsAt:
+            hasPendingRefresh
+              ? null
+              :
             typeof session.testEndsAt === "number" ? session.testEndsAt : null,
           testStartedAt:
             typeof session.testStartedAt === "number"
@@ -496,7 +548,15 @@ if (attempted) {
   return;
 }
 
-      if (session.testActive) {
+      if (session.testActive || canResumePausedTest) {
+        sessionStorage.setItem("studentId", sid);
+        sessionStorage.setItem("testActive", "true");
+        testStartedRef.current = true;
+        setLoading(false);
+        return;
+      }
+
+      if (hasPausedDraft) {
         sessionStorage.setItem("studentId", sid);
         sessionStorage.setItem("testActive", "true");
         testStartedRef.current = true;

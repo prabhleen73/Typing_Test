@@ -116,8 +116,8 @@ export default function LoginPage() {
           return;
         }
 
-        //  redirect only if testActive is TRUE
-        if (session.valid && session.testActive) {
+        //  redirect if the test is running or paused for resume
+        if (session.valid && (session.testActive || session.testPaused)) {
           router.replace("/test");
         }
       } catch (err) {
