@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "cross-env NODE_OPTIONS=--openssl-legacy-provider next dev --hostname 0.0.0.0 --webpack",
-    "build": "cross-env NODE_OPTIONS=--openssl-legacy-provider next build --webpack",
+    "dev": "cross-env NODE_OPTIONS=--openssl-legacy-provider next dev --hostname 0.0.0.0",
+    "build": "cross-env NODE_OPTIONS=--openssl-legacy-provider next build",
     "start": "cross-env NODE_OPTIONS=--openssl-legacy-provider next start --hostname 0.0.0.0",
     "lint": "next lint",
     "loadtest": "node scripts/loadtest.mjs",
